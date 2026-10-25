@@ -1,5 +1,3 @@
-import { redirect } from 'next/navigation'
+'use client'
 
-export default function DashboardPage() {
-  redirect('/login')
-}
+export const dynamic = 'force-dynamic'
