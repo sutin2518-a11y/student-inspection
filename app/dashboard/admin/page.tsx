@@ -1,5 +1,7 @@
 'use client'
 
+export const dynamic = 'force-dynamic'
+
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/utils/supabase/client'
@@ -18,14 +20,18 @@ export default function AdminDashboard() {
   const [notes, setNotes] = useState('')
   const [loading, setLoading] = useState(false)
   const [currentTeacher, setCurrentTeacher] = useState<any>(null)
-
-  const currentMonth = new Date().toISOString().slice(0, 7) // รูปแบบ 'YYYY-MM'
+  const [currentMonth, setCurrentMonth] = useState('')
 
   useEffect(() => {
-    fetchInitialData()
+    // กำหนดค่าเดือนใน useEffect เพื่อป้องกัน Build Error
+    const month = new Date().toISOString().slice(0, 7)
+    setCurrentMonth(month)
+    fetchInitialData(month)
   }, [])
 
-  const fetchInitialData = async () => {
+  const fetchInitialData = async (monthVal?: string) => {
+    const targetMonth = monthVal || currentMonth
+
     // ตรวจสอบ User Login
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) {
@@ -124,7 +130,7 @@ export default function AdminDashboard() {
       <div className="max-w-7xl mx-auto flex justify-between items-center mb-8 bg-white p-4 rounded-xl shadow-sm">
         <div>
           <h1 className="text-2xl font-bold text-blue-900">ระบบตรวจเครื่องแต่งกายนักเรียน (สำหรับครู)</h1>
-          <p className="text-sm text-gray-500">ประจำเดือน: {currentMonth}</p>
+          <p className="text-sm text-gray-500">ประจำเดือน: {currentMonth || 'กำลังโหลด...'}</p>
         </div>
         <div className="flex gap-3">
           <button
