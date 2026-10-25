@@ -3,17 +3,19 @@
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/utils/supabase/client'
+import Swal from 'sweetalert2'
 
 export default function LoginPage() {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
-  const [errorMsg, setErrorMsg] = useState('')
+  const [loading, setLoading] = useState(false)
+  
   const router = useRouter()
   const supabase = createClient()
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault()
-    setErrorMsg('')
+    setLoading(true)
 
     const { data, error } = await supabase.auth.signInWithPassword({
       email,
@@ -21,49 +23,60 @@ export default function LoginPage() {
     })
 
     if (error) {
-      setErrorMsg('อีเมลหรือรหัสผ่านไม่ถูกต้อง')
+      setLoading(false)
+      Swal.fire({
+        icon: 'error',
+        title: 'เข้าสู่ระบบไม่สำเร็จ',
+        text: 'อีเมลหรือรหัสผ่านไม่ถูกต้อง กรุณาตรวจสอบอีกครั้ง',
+        confirmButtonColor: '#2563eb',
+        confirmButtonText: 'ตกลง'
+      })
       return
     }
 
-    if (data.user) {
-      // ดึงบทบาท (role) ของผู้ใช้
-      const { data: profile } = await supabase
-        .from('profiles')
-        .select('role')
-        .eq('id', data.user.id)
-        .single()
+    // ดึงสิทธิ์ผู้ใช้ (Role)
+    const { data: profile } = await supabase
+      .from('profiles')
+      .select('role')
+      .eq('id', data.user.id)
+      .single()
 
-      if (profile?.role === 'admin') {
+    setLoading(false)
+
+    // ป๊อปอัปแจ้งเตือนสำเร็จ
+    Swal.fire({
+      icon: 'success',
+      title: 'เข้าสู่ระบบสำเร็จ',
+      text: 'กำลังนำท่านเข้าสู่ระบบ...',
+      timer: 1500,
+      showConfirmButton: false
+    }).then(() => {
+      if (profile?.role === 'admin' || profile?.role === 'teacher') {
         router.push('/dashboard/admin')
       } else {
         router.push('/dashboard/student')
       }
-    }
+    })
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-100 p-4">
-      <div className="bg-white p-8 rounded-xl shadow-md w-full max-w-md">
-        <h1 className="text-2xl font-bold text-center text-gray-800 mb-6">
-          เข้าสู่ระบบตรวจเครื่องแต่งกาย
-        </h1>
+    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-900 to-indigo-800 p-4">
+      <div className="bg-white p-8 rounded-2xl shadow-xl w-full max-w-md">
+        <div className="text-center mb-8">
+          <h1 className="text-2xl font-bold text-gray-800">เข้าสู่ระบบตรวจเครื่องแต่งกาย</h1>
+          <p className="text-sm text-gray-500 mt-2">กรุณากรอกอีเมลและรหัสผ่านเพื่อเข้าใช้งาน</p>
+        </div>
 
-        {errorMsg && (
-          <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-2 rounded mb-4 text-sm">
-            {errorMsg}
-          </div>
-        )}
-
-        <form onSubmit={handleLogin} className="space-y-4">
+        <form onSubmit={handleLogin} className="space-y-5">
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">อีเมล</label>
             <input
               type="email"
               required
-              className="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-gray-800"
               placeholder="user@school.ac.th"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
+              className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none transition text-gray-800 bg-white"
             />
           </div>
 
@@ -72,18 +85,19 @@ export default function LoginPage() {
             <input
               type="password"
               required
-              className="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-gray-800"
               placeholder="••••••••"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
+              className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none transition text-gray-800 bg-white"
             />
           </div>
 
           <button
             type="submit"
-            className="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2 rounded-lg transition"
+            disabled={loading}
+            className="w-full bg-blue-600 hover:bg-blue-700 text-white font-medium py-2.5 rounded-lg transition duration-200 shadow-md disabled:opacity-50"
           >
-            เข้าสู่ระบบ
+            {loading ? 'กำลังเข้าสู่ระบบ...' : 'เข้าสู่ระบบ'}
           </button>
         </form>
       </div>
