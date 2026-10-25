@@ -1,5 +1,7 @@
 'use client'
 
+export const dynamic = 'force-dynamic'
+
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/utils/supabase/client'
@@ -45,6 +47,16 @@ export default function StudentDashboard() {
     router.push('/login')
   }
 
+  // แปลงวันที่ปลอดภัยสำหรับ SSR / Client Prerender
+  const formatDate = (dateString: string) => {
+    if (!dateString) return '-'
+    try {
+      return new Date(dateString).toLocaleDateString('th-TH')
+    } catch {
+      return dateString
+    }
+  }
+
   return (
     <div className="min-h-screen bg-gray-50 text-gray-800 p-6">
       <div className="max-w-4xl mx-auto bg-white p-6 rounded-xl shadow-sm mb-6 flex justify-between items-center">
@@ -85,7 +97,7 @@ export default function StudentDashboard() {
                       </span>
                     )}
                     <span className="text-xs text-gray-400">
-                      | เดือน: {item.inspection_month}
+                      | เดือน: {item.inspection_month || '-'}
                     </span>
                   </div>
                   <p className="text-sm text-gray-600">
@@ -93,7 +105,7 @@ export default function StudentDashboard() {
                   </p>
                 </div>
                 <span className="text-xs text-gray-400">
-                  {new Date(item.created_at).toLocaleDateString('th-TH')}
+                  {formatDate(item.created_at)}
                 </span>
               </div>
             ))}

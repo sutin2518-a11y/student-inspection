@@ -23,15 +23,13 @@ export default function AdminDashboard() {
   const [currentMonth, setCurrentMonth] = useState('')
 
   useEffect(() => {
-    // กำหนดค่าเดือนใน useEffect เพื่อป้องกัน Build Error
+    // กำหนดค่าเดือนใน useEffect เพื่อป้องกัน Build Error (Prerender error)
     const month = new Date().toISOString().slice(0, 7)
     setCurrentMonth(month)
     fetchInitialData(month)
   }, [])
 
   const fetchInitialData = async (monthVal?: string) => {
-    const targetMonth = monthVal || currentMonth
-
     // ตรวจสอบ User Login
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) {
@@ -61,12 +59,13 @@ export default function AdminDashboard() {
     if (!selectedStudent) return alert('กรุณาเลือกนักเรียนก่อนบันทึก')
 
     setLoading(true)
+    const activeMonth = currentMonth || new Date().toISOString().slice(0, 7)
     const { error } = await supabase.from('inspections').insert({
       student_id: selectedStudent.id,
-      teacher_id: currentTeacher.id,
+      teacher_id: currentTeacher?.id,
       status,
       notes,
-      inspection_month: currentMonth
+      inspection_month: activeMonth
     })
 
     setLoading(false)
@@ -77,7 +76,7 @@ export default function AdminDashboard() {
       setSelectedStudent(null)
       setNotes('')
       setStatus('pass')
-      fetchInitialData()
+      fetchInitialData(currentMonth)
     }
   }
 
@@ -89,6 +88,7 @@ export default function AdminDashboard() {
 
   // คำนวณจำนวนครั้งที่ไม่ผ่านในเดือนนี้ของนักเรียนแต่ละคน
   const getStudentMonthlyFails = (studentUuid: string) => {
+    if (!currentMonth) return 0
     return inspections.filter(
       (i) => i.student_id === studentUuid && i.inspection_month === currentMonth && i.status === 'fail'
     ).length
@@ -96,13 +96,14 @@ export default function AdminDashboard() {
 
   // ดาวน์โหลดไฟล์ Excel
   const exportToExcel = () => {
+    const reportMonth = currentMonth || new Date().toISOString().slice(0, 7)
     const reportData = students.map((s) => {
       const studentFailsThisMonth = getStudentMonthlyFails(s.id)
       const totalFails = inspections.filter((i) => i.student_id === s.id && i.status === 'fail').length
 
       return {
         'รหัสนักเรียน': s.student_id || '-',
-        'ชื่อ-นามสกุล': s.full_name,
+        'ชื่อ-นามสกุล': s.full_name || '-',
         'ระดับชั้น': s.grade || '-',
         'ห้อง': s.room || '-',
         'จำนวนไม่ผ่าน (เดือนนี้)': studentFailsThisMonth,
@@ -114,12 +115,22 @@ export default function AdminDashboard() {
     const worksheet = XLSX.utils.json_to_sheet(reportData)
     const workbook = XLSX.utils.book_new()
     XLSX.utils.book_append_sheet(workbook, worksheet, 'รายงานการตรวจเครื่องแต่งกาย')
-    XLSX.writeFile(workbook, `รายงานการตรวจเครื่องแต่งกาย_${currentMonth}.xlsx`)
+    XLSX.writeFile(workbook, `รายงานการตรวจเครื่องแต่งกาย_${reportMonth}.xlsx`)
+  }
+
+  // แปลงวันที่ปลอดภัยสำหรับ SSR
+  const formatDate = (dateString: string) => {
+    if (!dateString) return '-'
+    try {
+      return new Date(dateString).toLocaleDateString('th-TH')
+    } catch {
+      return dateString
+    }
   }
 
   const filteredStudents = students.filter(
     (s) =>
-      s.full_name.includes(searchTerm) ||
+      (s.full_name && s.full_name.includes(searchTerm)) ||
       (s.student_id && s.student_id.includes(searchTerm)) ||
       (s.grade && s.grade.includes(searchTerm))
   )
@@ -264,7 +275,7 @@ export default function AdminDashboard() {
                 {inspections.map((item) => (
                   <tr key={item.id} className="hover:bg-gray-50">
                     <td className="p-3 text-xs text-gray-500">
-                      {new Date(item.created_at).toLocaleDateString('th-TH')}
+                      {formatDate(item.created_at)}
                     </td>
                     <td className="p-3 font-medium">{item.profiles?.full_name}</td>
                     <td className="p-3 text-xs">{item.profiles?.grade}/{item.profiles?.room}</td>
