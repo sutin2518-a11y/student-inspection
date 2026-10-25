@@ -3,109 +3,105 @@
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/utils/supabase/client'
-import Swal from 'sweetalert2'
 
 export default function LoginPage() {
-  const [inputIdentifier, setInputIdentifier] = useState('')
-  const [password, setPassword] = useState('')
-  const [loading, setLoading] = useState(false)
-  
-  const router = useRouter()
   const supabase = createClient()
+  const router = useRouter()
+
+  const [email, setEmail] = useState('')
+  const [password, setPassword] = useState('')
+  const [errorMsg, setErrorMsg] = useState('')
+  const [loading, setLoading] = useState(false)
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault()
     setLoading(true)
+    setErrorMsg('')
 
-    // ตรวจสอบหากไม่ได้ใส่ @ ให้เติม @chiangkham.ac.th ต่อท้ายอัตโนมัติ
-    let formattedEmail = inputIdentifier.trim()
-    if (!formattedEmail.includes('@')) {
-      formattedEmail = `${formattedEmail}@chiangkham.ac.th`
-    }
-
-    const { data, error } = await supabase.auth.signInWithPassword({
-      email: formattedEmail,
+    // 1. เข้าสู่ระบบด้วย Supabase Auth
+    const { data: { user }, error } = await supabase.auth.signInWithPassword({
+      email,
       password,
     })
 
     if (error) {
+      setErrorMsg('อีเมลหรือรหัสผ่านไม่ถูกต้อง')
       setLoading(false)
-      Swal.fire({
-        icon: 'error',
-        title: 'เข้าสู่ระบบไม่สำเร็จ',
-        text: 'กรุณาตรวจสอบรหัสประจำตัว/อีเมล หรือรหัสผ่านอีกครั้ง',
-        confirmButtonColor: '#2563eb',
-        confirmButtonText: 'ตกลง'
-      })
       return
     }
 
-    // ดึงสิทธิ์ผู้ใช้ (Role) จากตาราง profiles
-    const { data: profile } = await supabase
-      .from('profiles')
-      .select('role')
-      .eq('id', data.user.id)
-      .single()
+    if (user) {
+      // 2. ดึงบทบาทผู้ใช้จากตาราง profiles
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('role')
+        .eq('id', user.id)
+        .maybeSingle()
 
-    setLoading(false)
+      setLoading(false)
 
-    Swal.fire({
-      icon: 'success',
-      title: 'เข้าสู่ระบบสำเร็จ',
-      text: 'กำลังนำท่านเข้าสู่ระบบ...',
-      timer: 1500,
-      showConfirmButton: false
-    }).then(() => {
-      if (profile?.role === 'admin' || profile?.role === 'teacher') {
-        router.push('/dashboard/admin')
+      // 3. แยกหน้าตาม Role
+      if (profile?.role === 'admin') {
+        router.push('/admin')
+      } else if (profile?.role === 'teacher') {
+        router.push('/teacher')
+      } else if (profile?.role === 'student') {
+        router.push('/student')
       } else {
-        router.push('/dashboard/student')
+        router.push('/teacher')
       }
-    })
+    }
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-900 via-indigo-800 to-slate-900 p-4">
-      <div className="bg-white/95 backdrop-blur-sm p-8 rounded-2xl shadow-2xl w-full max-w-md border border-white/20">
-        <div className="text-center mb-8">
-          <h1 className="text-2xl font-bold text-gray-900">ระบบตรวจเครื่องแต่งกาย</h1>
-          <p className="text-sm text-gray-500 mt-1">โรงเรียนเชียงคำวิทยาคม</p>
-        </div>
+    <div className="min-h-screen flex items-center justify-center bg-gray-100 p-4">
+      <div className="bg-white p-8 rounded-xl shadow-md max-w-md w-full border border-gray-200">
+        <h1 className="text-2xl font-bold mb-2 text-center text-gray-800">
+          ระบบตรวจเครื่องแต่งกาย
+        </h1>
+        <p className="text-xs text-center text-gray-500 mb-6">
+          โรงเรียนเชียงคำวิทยาคม
+        </p>
 
-        <form onSubmit={handleLogin} className="space-y-5">
+        {errorMsg && (
+          <div className="bg-red-50 border border-red-200 text-red-600 p-3 rounded-lg text-sm mb-4 text-center font-medium">
+            {errorMsg}
+          </div>
+        )}
+
+        <form onSubmit={handleLogin} className="space-y-4">
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">
-              รหัสนักเรียน / บัญชีครู
+              อีเมล
             </label>
             <input
-              type="text"
+              type="email"
               required
-              placeholder="เช่น 12345 หรือ somchai"
-              value={inputIdentifier}
-              onChange={(e) => setInputIdentifier(e.target.value)}
-              className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 focus:outline-none transition text-gray-900 bg-white shadow-sm"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              className="w-full px-3.5 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-gray-800"
+              placeholder="example@ckw.ac.th"
             />
-            <p className="text-xs text-gray-500 mt-1.5">
-              *พิมพ์เฉพาะรหัสนักเรียน 5 หลัก หรือชื่อครูภาษาอังกฤษ (ระบบต่อท้าย @chiangkham.ac.th ให้อัตโนมัติ)
-            </p>
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">รหัสผ่าน</label>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              รหัสผ่าน
+            </label>
             <input
               type="password"
               required
-              placeholder="••••••••"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 focus:outline-none transition text-gray-900 bg-white shadow-sm"
+              className="w-full px-3.5 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-gray-800"
+              placeholder="••••••••"
             />
           </div>
 
           <button
             type="submit"
             disabled={loading}
-            className="w-full bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white font-semibold py-3 rounded-lg transition duration-200 shadow-lg hover:shadow-xl disabled:opacity-50"
+            className="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2.5 rounded-lg transition disabled:opacity-50 mt-2"
           >
             {loading ? 'กำลังเข้าสู่ระบบ...' : 'เข้าสู่ระบบ'}
           </button>
