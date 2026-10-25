@@ -34,7 +34,7 @@ export default function LoginPage() {
       return
     }
 
-    // ดึงสิทธิ์ผู้ใช้ (Role)
+    // ดึงสิทธิ์ผู้ใช้ (Role) จากตาราง profiles
     const { data: profile } = await supabase
       .from('profiles')
       .select('role')
@@ -43,7 +43,7 @@ export default function LoginPage() {
 
     setLoading(false)
 
-    // ป๊อปอัปแจ้งเตือนสำเร็จ
+    // แสดงการแจ้งเตือนสำเร็จ
     Swal.fire({
       icon: 'success',
       title: 'เข้าสู่ระบบสำเร็จ',
@@ -60,10 +60,10 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-900 to-indigo-800 p-4">
-      <div className="bg-white p-8 rounded-2xl shadow-xl w-full max-w-md">
+    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-900 via-indigo-800 to-slate-900 p-4">
+      <div className="bg-white/95 backdrop-blur-sm p-8 rounded-2xl shadow-2xl w-full max-w-md border border-white/20">
         <div className="text-center mb-8">
-          <h1 className="text-2xl font-bold text-gray-800">เข้าสู่ระบบตรวจเครื่องแต่งกาย</h1>
+          <h1 className="text-2xl font-bold text-gray-900">เข้าสู่ระบบตรวจเครื่องแต่งกาย</h1>
           <p className="text-sm text-gray-500 mt-2">กรุณากรอกอีเมลและรหัสผ่านเพื่อเข้าใช้งาน</p>
         </div>
 
@@ -76,7 +76,7 @@ export default function LoginPage() {
               placeholder="user@school.ac.th"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none transition text-gray-800 bg-white"
+              className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 focus:outline-none transition text-gray-900 bg-white shadow-sm"
             />
           </div>
 
@@ -88,14 +88,14 @@ export default function LoginPage() {
               placeholder="••••••••"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none transition text-gray-800 bg-white"
+              className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 focus:outline-none transition text-gray-900 bg-white shadow-sm"
             />
           </div>
 
           <button
             type="submit"
             disabled={loading}
-            className="w-full bg-blue-600 hover:bg-blue-700 text-white font-medium py-2.5 rounded-lg transition duration-200 shadow-md disabled:opacity-50"
+            className="w-full bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white font-semibold py-3 rounded-lg transition duration-200 shadow-lg hover:shadow-xl disabled:opacity-50"
           >
             {loading ? 'กำลังเข้าสู่ระบบ...' : 'เข้าสู่ระบบ'}
           </button>
