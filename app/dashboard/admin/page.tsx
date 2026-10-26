@@ -218,6 +218,19 @@ export default function CompleteInspectionPage() {
     setHasUnsavedChanges(true)
   }
 
+  // 🟢 ฟังก์ชันสำหรับกดวนเปลี่ยนสถานะลูปบนมือถือ (รอตรวจ -> ผ่าน -> ไม่ผ่าน -> ขาด -> ผ่าน)
+  const handleCycleStatus = (studentId: string, category: 'hair' | 'nails' | 'uniform') => {
+    const current = studentStatuses[studentId]?.[category] || 'pending'
+    let next: StatusType = 'pass'
+
+    if (current === 'pending') next = 'pass'
+    else if (current === 'pass') next = 'fail'
+    else if (current === 'fail') next = 'absent'
+    else if (current === 'absent') next = 'pass'
+
+    handleSetItemStatus(studentId, category, next)
+  }
+
   const handleBulkSetStatus = (targetStatus: StatusType) => {
     setShowBulkDropdown(false)
     const updated = { ...studentStatuses }
@@ -365,39 +378,62 @@ export default function CompleteInspectionPage() {
     return st.hair !== 'pending' || st.nails !== 'pending' || st.uniform !== 'pending'
   }).length
 
+  // 🟢 Component ปุ่มเลือกสถานะ ปรับแบบ Responsive (Desktop = 3 ปุ่มแยก, Mobile = ปุ่มเดี่ยววนลูป)
   const renderItemControl = (studentId: string, catKey: 'hair' | 'nails' | 'uniform') => {
     const status = studentStatuses[studentId]?.[catKey] || 'pending'
 
     return (
-      <div className="flex flex-col items-center gap-1.5 py-1">
-        {status === 'pass' && <span className="bg-[#16a34a] text-white text-[11px] px-2.5 py-0.5 rounded-md font-bold">ผ่าน</span>}
-        {status === 'fail' && <span className="bg-[#dc2626] text-white text-[11px] px-2.5 py-0.5 rounded-md font-bold">ไม่ผ่าน</span>}
-        {status === 'absent' && <span className="bg-[#d97706] text-white text-[11px] px-2.5 py-0.5 rounded-md font-bold">ขาด</span>}
-        {status === 'pending' && <span className="bg-gray-200 text-gray-600 text-[11px] px-2.5 py-0.5 rounded-md font-bold">รอตรวจ</span>}
+      <div className="flex flex-col items-center justify-center py-1">
+        
+        {/* --- DESKTOP VIEW (md:flex) --- */}
+        <div className="hidden md:flex flex-col items-center gap-1.5">
+          {status === 'pass' && <span className="bg-[#16a34a] text-white text-[11px] px-2.5 py-0.5 rounded-md font-bold">ผ่าน</span>}
+          {status === 'fail' && <span className="bg-[#dc2626] text-white text-[11px] px-2.5 py-0.5 rounded-md font-bold">ไม่ผ่าน</span>}
+          {status === 'absent' && <span className="bg-[#d97706] text-white text-[11px] px-2.5 py-0.5 rounded-md font-bold">ขาด</span>}
+          {status === 'pending' && <span className="bg-gray-200 text-gray-600 text-[11px] px-2.5 py-0.5 rounded-md font-bold">รอตรวจ</span>}
 
-        <div className="inline-flex items-center gap-1 bg-gray-100 p-1 rounded-lg border border-gray-200">
-          <button 
-            onClick={() => handleSetItemStatus(studentId, catKey, 'pass')} 
-            className={`p-1 rounded-md transition ${status === 'pass' ? 'bg-[#16a34a] text-white' : 'bg-white text-[#16a34a] border border-gray-200 hover:bg-emerald-50'}`}
-            title="ผ่าน"
-          >
-            <Check className="w-3.5 h-3.5 stroke-[3]" />
-          </button>
-          <button 
-            onClick={() => handleSetItemStatus(studentId, catKey, 'fail')} 
-            className={`p-1 rounded-md transition ${status === 'fail' ? 'bg-[#dc2626] text-white' : 'bg-white text-[#dc2626] border border-gray-200 hover:bg-rose-50'}`}
-            title="ไม่ผ่าน"
-          >
-            <X className="w-3.5 h-3.5 stroke-[3]" />
-          </button>
-          <button 
-            onClick={() => handleSetItemStatus(studentId, catKey, 'absent')} 
-            className={`p-1 rounded-md transition ${status === 'absent' ? 'bg-[#d97706] text-white' : 'bg-white text-[#d97706] border border-gray-200 hover:bg-amber-50'}`}
-            title="ขาดเรียน"
-          >
-            <UserX className="w-3.5 h-3.5 stroke-[2.5]" />
-          </button>
+          <div className="inline-flex items-center gap-1 bg-gray-100 p-1 rounded-lg border border-gray-200">
+            <button 
+              onClick={() => handleSetItemStatus(studentId, catKey, 'pass')} 
+              className={`p-1 rounded-md transition ${status === 'pass' ? 'bg-[#16a34a] text-white' : 'bg-white text-[#16a34a] border border-gray-200 hover:bg-emerald-50'}`}
+              title="ผ่าน"
+            >
+              <Check className="w-3.5 h-3.5 stroke-[3]" />
+            </button>
+            <button 
+              onClick={() => handleSetItemStatus(studentId, catKey, 'fail')} 
+              className={`p-1 rounded-md transition ${status === 'fail' ? 'bg-[#dc2626] text-white' : 'bg-white text-[#dc2626] border border-gray-200 hover:bg-rose-50'}`}
+              title="ไม่ผ่าน"
+            >
+              <X className="w-3.5 h-3.5 stroke-[3]" />
+            </button>
+            <button 
+              onClick={() => handleSetItemStatus(studentId, catKey, 'absent')} 
+              className={`p-1 rounded-md transition ${status === 'absent' ? 'bg-[#d97706] text-white' : 'bg-white text-[#d97706] border border-gray-200 hover:bg-amber-50'}`}
+              title="ขาดเรียน"
+            >
+              <UserX className="w-3.5 h-3.5 stroke-[2.5]" />
+            </button>
+          </div>
         </div>
+
+        {/* --- MOBILE VIEW (md:hidden) : ปุ่มเดี่ยวสำหรับกดวนเปลี่ยนสถานะ --- */}
+        <button
+          onClick={() => handleCycleStatus(studentId, catKey)}
+          className={`md:hidden px-3 py-1.5 rounded-xl font-bold text-xs flex items-center gap-1 shadow-sm active:scale-95 transition-all cursor-pointer ${
+            status === 'pass' ? 'bg-[#16a34a] text-white ring-2 ring-emerald-600/20' :
+            status === 'fail' ? 'bg-[#dc2626] text-white ring-2 ring-rose-600/20' :
+            status === 'absent' ? 'bg-[#d97706] text-white ring-2 ring-amber-600/20' :
+            'bg-gray-100 text-gray-700 border border-gray-300'
+          }`}
+          title="กดเพื่อวนเปลี่ยนสถานะ"
+        >
+          {status === 'pass' && <><Check className="w-3.5 h-3.5 stroke-[3]" /><span>ผ่าน</span></>}
+          {status === 'fail' && <><X className="w-3.5 h-3.5 stroke-[3]" /><span>ไม่ผ่าน</span></>}
+          {status === 'absent' && <><UserX className="w-3.5 h-3.5 stroke-[2.5]" /><span>ขาด</span></>}
+          {status === 'pending' && <><RotateCcw className="w-3.5 h-3.5 text-gray-500" /><span>รอตรวจ</span></>}
+        </button>
+
       </div>
     )
   }
@@ -408,28 +444,32 @@ export default function CompleteInspectionPage() {
       <div className="max-w-6xl mx-auto pt-4 px-4">
         <header className="bg-[#1d4ed8] text-white px-6 py-4 rounded-2xl shadow-lg flex justify-between items-center">
           <div className="flex items-center gap-3">
-            <div className="bg-white/20 p-2 rounded-xl">
+            <div className="bg-white/20 p-2 rounded-xl shrink-0">
               <ShieldCheck className="w-7 h-7 text-white" />
             </div>
             <div>
-              <h1 className="text-xl md:text-2xl font-extrabold tracking-tight">ระบบตรวจระเบียบนักเรียน</h1>
+              <h1 className="text-lg md:text-2xl font-extrabold tracking-tight leading-snug">ระบบตรวจระเบียบนักเรียน</h1>
               <p className="text-xs text-blue-200">ปีการศึกษา {academicYear} ภาคเรียนที่ {semester}</p>
             </div>
           </div>
           
           <div className="flex items-center gap-2">
+            {/* 🟢 ซ่อนปุ่มสถิติสะสม บนมือถือ (แสดงเฉพาะหน้าจอ md ขึ้นไป) */}
             <button 
               onClick={() => router.push('/dashboard/admin/stats')}
-              className="flex items-center gap-1.5 bg-white/20 hover:bg-white/30 text-white px-3.5 py-1.5 rounded-lg text-sm font-bold transition"
+              className="hidden md:flex items-center gap-1.5 bg-white/20 hover:bg-white/30 text-white px-3.5 py-1.5 rounded-lg text-sm font-bold transition"
             >
               <BarChart3 size={16} /> สถิติสะสม
             </button>
+
+            {/* 🟢 ซ่อนปุ่มออกจากระบบ บนมือถือ (แสดงเฉพาะหน้าจอ md ขึ้นไป) */}
             <button 
               onClick={handleLogout}
-              className="flex items-center gap-1.5 text-white bg-white/10 hover:bg-white/20 px-3 py-1.5 rounded-lg text-sm font-medium transition"
+              className="hidden md:flex items-center gap-1.5 text-white bg-white/10 hover:bg-white/20 px-3 py-1.5 rounded-lg text-sm font-medium transition"
             >
               <LogOut size={16} /> ออกจากระบบ
             </button>
+
             <button className="text-white hover:bg-white/10 p-2 rounded-lg transition">
               <Menu className="w-6 h-6" />
             </button>
@@ -439,7 +479,7 @@ export default function CompleteInspectionPage() {
 
       <main className="max-w-6xl mx-auto px-4 mt-4 space-y-4">
         {/* การ์ดจัดการห้อง + ปุ่มการทำงาน */}
-        <div className="bg-white rounded-2xl p-4 shadow-sm border border-gray-100 flex flex-wrap items-center gap-3 w-full">
+        <div className="bg-white rounded-2xl p-4 shadow-sm border border-gray-100 flex flex-wrap items-center justify-between gap-3 w-full">
           
           {/* ฝั่งซ้าย: ข้อมูลห้อง + เลือกเดือน + เลือกหมวดหมู่ */}
           <div className="flex flex-wrap items-center gap-3">
@@ -485,12 +525,11 @@ export default function CompleteInspectionPage() {
 
           {/* กลุ่มปุ่มจัดการห้อง */}
           <div className="flex flex-wrap items-center gap-2">
-            {/* ดร็อปดาวน์เปลี่ยนยกห้อง (ปรับเป็นข้อความ "เลือกการประเมิน") */}
             <div className="relative" ref={dropdownRef}>
               <button
                 onClick={() => setShowBulkDropdown(!showBulkDropdown)}
                 disabled={saving || students.length === 0}
-                className="flex items-center gap-2 bg-[#16a34a] hover:bg-[#15803d] text-white px-4 py-2 rounded-xl text-sm font-bold shadow-sm transition active:scale-95 disabled:opacity-50"
+                className="flex items-center gap-2 bg-[#16a34a] hover:bg-[#15803d] text-white px-3.5 py-2 rounded-xl text-xs md:text-sm font-bold shadow-sm transition active:scale-95 disabled:opacity-50"
               >
                 <span>เลือกการประเมิน</span>
                 <ChevronDown className={`w-4 h-4 transition-transform ${showBulkDropdown ? 'rotate-180' : ''}`} />
@@ -535,11 +574,10 @@ export default function CompleteInspectionPage() {
               )}
             </div>
 
-            {/* ปุ่มบันทึกข้อมูล */}
             <button
               onClick={handleSaveAll}
               disabled={saving || students.length === 0}
-              className={`flex items-center gap-1.5 text-white px-4 py-2 rounded-xl text-sm font-bold shadow-md transition active:scale-95 disabled:opacity-50 ${
+              className={`flex items-center gap-1.5 text-white px-3.5 py-2 rounded-xl text-xs md:text-sm font-bold shadow-md transition active:scale-95 disabled:opacity-50 ${
                 hasUnsavedChanges 
                   ? 'bg-blue-600 hover:bg-blue-700 ring-4 ring-blue-300/50' 
                   : 'bg-blue-600 hover:bg-blue-700'
@@ -549,20 +587,19 @@ export default function CompleteInspectionPage() {
               <span>{saving ? 'กำลังบันทึก...' : 'บันทึกข้อมูล'}</span>
             </button>
 
-            {/* ปุ่มเปลี่ยนห้อง */}
             <button
               onClick={() => setShowRoomModal(true)}
-              className="flex items-center gap-1.5 bg-gray-50 hover:bg-gray-100 text-gray-700 border border-gray-300 px-3.5 py-2 rounded-xl text-sm font-bold transition active:scale-95"
+              className="flex items-center gap-1.5 bg-gray-50 hover:bg-gray-100 text-gray-700 border border-gray-300 px-3.5 py-2 rounded-xl text-xs md:text-sm font-bold transition active:scale-95"
             >
               <ArrowLeft className="w-4 h-4" /> เปลี่ยนห้อง
             </button>
           </div>
 
-          {/* ปุ่มส่งออก Excel (ชิดกรอบขวาสุดด้วย ml-auto) */}
+          {/* 🟢 ซ่อนปุ่มส่งออก Excel บนมือถือ (แสดงเฉพาะหน้าจอ md ขึ้นไป) */}
           <button
             onClick={handleExportExcel}
             disabled={loading || students.length === 0}
-            className="ml-auto flex items-center gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 rounded-xl text-sm font-bold shadow-md hover:shadow-lg transition active:scale-95 disabled:opacity-50 ring-2 ring-emerald-600/20"
+            className="hidden md:flex ml-auto items-center gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 rounded-xl text-sm font-bold shadow-md hover:shadow-lg transition active:scale-95 disabled:opacity-50 ring-2 ring-emerald-600/20"
           >
             <Download className="w-4 h-4" />
             <span>ส่งออก Excel</span>
@@ -579,62 +616,62 @@ export default function CompleteInspectionPage() {
             <div className="overflow-x-auto">
               <table className="w-full text-left border-collapse">
                 <thead>
-                  <tr className="bg-gray-50 text-gray-800 font-bold text-sm border-b border-gray-200">
-                    <th className="py-4 px-4 text-center w-16">เลขที่</th>
-                    <th className="py-4 px-4 min-w-[180px]">ชื่อ-สกุล</th>
-                    <th className="py-4 px-4 text-center w-40">รอบการตรวจ</th>
+                  <tr className="bg-gray-50 text-gray-800 font-bold text-xs md:text-sm border-b border-gray-200">
+                    <th className="py-3 px-2 md:py-4 md:px-4 text-center w-12 md:w-16">เลขที่</th>
+                    <th className="py-3 px-3 md:py-4 md:px-4 min-w-[140px] md:min-w-[180px]">ชื่อ-สกุล</th>
+                    <th className="py-3 px-2 md:py-4 md:px-4 text-center w-32 md:w-40">รอบการตรวจ</th>
                     
                     {selectedCategory === 'all' ? (
                       <>
-                        <th className="py-4 px-4 text-center min-w-[140px]">✂️ ทรงผม</th>
-                        <th className="py-4 px-4 text-center min-w-[140px]">✨ เล็บ</th>
-                        <th className="py-4 px-4 text-center min-w-[140px]">👔 การแต่งกาย</th>
-                        <th className="py-4 px-4 text-center w-24">AI</th>
+                        <th className="py-3 px-2 md:py-4 md:px-4 text-center min-w-[90px] md:min-w-[140px]">✂️ ทรงผม</th>
+                        <th className="py-3 px-2 md:py-4 md:px-4 text-center min-w-[90px] md:min-w-[140px]">✨ เล็บ</th>
+                        <th className="py-3 px-2 md:py-4 md:px-4 text-center min-w-[90px] md:min-w-[140px]">👔 การแต่งกาย</th>
+                        <th className="py-3 px-2 md:py-4 md:px-4 text-center w-16 md:w-24">AI</th>
                       </>
                     ) : (
                       <>
-                        <th className="py-4 px-6 text-center w-32">สถานะ</th>
-                        <th className="py-4 px-6 text-center w-60">จัดการ</th>
+                        <th className="py-3 px-4 md:py-4 md:px-6 text-center w-28 md:w-32">สถานะ</th>
+                        <th className="py-3 px-4 md:py-4 md:px-6 text-center w-40 md:w-60">จัดการ</th>
                       </>
                     )}
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-gray-100 text-sm">
+                <tbody className="divide-y divide-gray-100 text-xs md:text-sm">
                   {students.map((student, idx) => {
                     const isEven = idx % 2 === 1
                     const meta = inspectionMetas[student.id] || { attempt_number: 1, is_correction: false, failed_correction_count: 0 }
 
                     return (
                       <tr key={student.id} className={`transition hover:bg-blue-50/40 ${isEven ? 'bg-gray-50/60' : 'bg-white'}`}>
-                        <td className="py-3.5 px-4 text-center font-bold text-gray-800">
+                        <td className="py-3 px-2 md:py-3.5 md:px-4 text-center font-bold text-gray-800">
                           {student.number || idx + 1}
                         </td>
 
-                        <td className="py-3.5 px-4">
-                          <div className="font-bold text-gray-900 text-base">{student.full_name}</div>
-                          <div className="text-xs text-gray-500 mt-0.5 font-medium">
+                        <td className="py-3 px-3 md:py-3.5 md:px-4">
+                          <div className="font-bold text-gray-900 text-sm md:text-base">{student.full_name}</div>
+                          <div className="text-[10px] md:text-xs text-gray-500 mt-0.5 font-medium">
                             {student.student_id || '-'} | {student.gender || (student.full_name.startsWith('เด็กหญิง') || student.full_name.startsWith('นางสาว') ? 'หญิง' : 'ชาย')}
                           </div>
                         </td>
 
-                        <td className="py-3.5 px-4 text-center">
+                        <td className="py-3 px-2 md:py-3.5 md:px-4 text-center">
                           {meta.is_correction ? (
                             <div className="flex flex-col items-center gap-1.5">
-                              <span className="bg-amber-100 text-amber-800 text-[11px] px-2.5 py-0.5 rounded-md font-bold flex items-center gap-1">
+                              <span className="bg-amber-100 text-amber-800 text-[10px] md:text-[11px] px-2 py-0.5 rounded-md font-bold flex items-center gap-1">
                                 <RefreshCw className="w-3 h-3 text-amber-700" />
                                 ตรวจแก้ไข ({meta.attempt_number})
                               </span>
                               
                               <button
                                 onClick={() => handleAddFailedCorrection(student.id, student.full_name)}
-                                className="bg-rose-50 hover:bg-rose-100 text-rose-700 hover:text-rose-800 text-[10px] px-2.5 py-1 rounded-full font-extrabold border border-rose-300 shadow-sm transition active:scale-95 flex items-center gap-1 cursor-pointer"
+                                className="bg-rose-50 hover:bg-rose-100 text-rose-700 hover:text-rose-800 text-[9px] md:text-[10px] px-2 py-0.5 rounded-full font-extrabold border border-rose-300 shadow-sm transition active:scale-95 flex items-center gap-1 cursor-pointer"
                                 title="กดเพื่อบันทึกว่ามาตรวจแก้ไขแล้วแต่ยังไม่ผ่าน"
                               >
                                 <span>⚠️ ไม่ผ่านซ้ำ (+1 แก้ไข)</span>
                               </button>
                             </div>
                           ) : (
-                            <span className="inline-block bg-blue-50 text-blue-700 text-[11px] px-2.5 py-0.5 rounded-md font-bold">
+                            <span className="inline-block bg-blue-50 text-blue-700 text-[10px] md:text-[11px] px-2 py-0.5 rounded-md font-bold">
                               ประจำเดือน
                             </span>
                           )}
@@ -642,54 +679,54 @@ export default function CompleteInspectionPage() {
 
                         {selectedCategory === 'all' ? (
                           <>
-                            <td className="py-3.5 px-4 text-center">{renderItemControl(student.id, 'hair')}</td>
-                            <td className="py-3.5 px-4 text-center">{renderItemControl(student.id, 'nails')}</td>
-                            <td className="py-3.5 px-4 text-center">{renderItemControl(student.id, 'uniform')}</td>
-                            <td className="py-3.5 px-4 text-center">
+                            <td className="py-3 px-2 md:py-3.5 md:px-4 text-center">{renderItemControl(student.id, 'hair')}</td>
+                            <td className="py-3 px-2 md:py-3.5 md:px-4 text-center">{renderItemControl(student.id, 'nails')}</td>
+                            <td className="py-3 px-2 md:py-3.5 md:px-4 text-center">{renderItemControl(student.id, 'uniform')}</td>
+                            <td className="py-3 px-2 md:py-3.5 md:px-4 text-center">
                               <button 
                                 onClick={() => Swal.fire({ title: 'ระบบตรวจด้วย AI', text: `กำลังเตรียมเปิดกล้องสำหรับ ${student.full_name}`, icon: 'info' })} 
-                                className="inline-flex items-center gap-1 bg-black text-white px-2.5 py-1.5 rounded-lg text-xs font-bold hover:bg-gray-800 transition"
+                                className="inline-flex items-center gap-1 bg-black text-white px-2 py-1 md:px-2.5 md:py-1.5 rounded-lg text-[10px] md:text-xs font-bold hover:bg-gray-800 transition"
                               >
-                                <Camera className="w-3.5 h-3.5" />
+                                <Camera className="w-3 h-3 md:w-3.5 md:h-3.5" />
                                 <span>AI</span>
                               </button>
                             </td>
                           </>
                         ) : (
                           <>
-                            <td className="py-3.5 px-6 text-center">
-                              {studentStatuses[student.id]?.[selectedCategory] === 'pass' && <span className="inline-block bg-[#16a34a] text-white text-xs px-3.5 py-1 rounded-lg font-bold shadow-sm">ผ่าน</span>}
-                              {studentStatuses[student.id]?.[selectedCategory] === 'fail' && <span className="inline-block bg-[#dc2626] text-white text-xs px-3.5 py-1 rounded-lg font-bold shadow-sm">ไม่ผ่าน</span>}
-                              {studentStatuses[student.id]?.[selectedCategory] === 'absent' && <span className="inline-block bg-[#d97706] text-white text-xs px-3.5 py-1 rounded-lg font-bold shadow-sm">ขาด</span>}
-                              {(!studentStatuses[student.id]?.[selectedCategory] || studentStatuses[student.id]?.[selectedCategory] === 'pending') && <span className="inline-block bg-gray-200 text-gray-600 text-xs px-3.5 py-1 rounded-lg font-bold">รอตรวจ</span>}
+                            <td className="py-3 px-4 md:py-3.5 md:px-6 text-center">
+                              {studentStatuses[student.id]?.[selectedCategory] === 'pass' && <span className="inline-block bg-[#16a34a] text-white text-xs px-2.5 py-0.5 rounded-lg font-bold shadow-sm">ผ่าน</span>}
+                              {studentStatuses[student.id]?.[selectedCategory] === 'fail' && <span className="inline-block bg-[#dc2626] text-white text-xs px-2.5 py-0.5 rounded-lg font-bold shadow-sm">ไม่ผ่าน</span>}
+                              {studentStatuses[student.id]?.[selectedCategory] === 'absent' && <span className="inline-block bg-[#d97706] text-white text-xs px-2.5 py-0.5 rounded-lg font-bold shadow-sm">ขาด</span>}
+                              {(!studentStatuses[student.id]?.[selectedCategory] || studentStatuses[student.id]?.[selectedCategory] === 'pending') && <span className="inline-block bg-gray-200 text-gray-600 text-xs px-2.5 py-0.5 rounded-lg font-bold">รอตรวจ</span>}
                             </td>
 
-                            <td className="py-3.5 px-6 text-center">
-                              <div className="inline-flex items-center gap-1.5 bg-gray-100 p-1 rounded-xl border border-gray-200">
+                            <td className="py-3 px-4 md:py-3.5 md:px-6 text-center">
+                              <div className="inline-flex items-center gap-1 bg-gray-100 p-1 rounded-xl border border-gray-200">
                                 <button 
                                   onClick={() => handleSetItemStatus(student.id, selectedCategory, 'pass')} 
                                   className={`p-1.5 rounded-lg transition ${studentStatuses[student.id]?.[selectedCategory] === 'pass' ? 'bg-[#16a34a] text-white shadow-sm' : 'bg-white text-[#16a34a] border border-gray-200 hover:bg-emerald-50'}`}
                                   title="ผ่าน"
                                 >
-                                  <Check className="w-4 h-4 stroke-[3]" />
+                                  <Check className="w-3.5 h-3.5 stroke-[3]" />
                                 </button>
                                 <button 
                                   onClick={() => handleSetItemStatus(student.id, selectedCategory, 'fail')} 
                                   className={`p-1.5 rounded-lg transition ${studentStatuses[student.id]?.[selectedCategory] === 'fail' ? 'bg-[#dc2626] text-white shadow-sm' : 'bg-white text-[#dc2626] border border-gray-200 hover:bg-rose-50'}`}
                                   title="ไม่ผ่าน"
                                 >
-                                  <X className="w-4 h-4 stroke-[3]" />
+                                  <X className="w-3.5 h-3.5 stroke-[3]" />
                                 </button>
                                 <button 
                                   onClick={() => handleSetItemStatus(student.id, selectedCategory, 'absent')} 
                                   className={`p-1.5 rounded-lg transition ${studentStatuses[student.id]?.[selectedCategory] === 'absent' ? 'bg-[#d97706] text-white shadow-sm' : 'bg-white text-[#d97706] border border-gray-200 hover:bg-amber-50'}`}
                                   title="ขาดเรียน"
                                 >
-                                  <UserX className="w-4 h-4 stroke-[2.5]" />
+                                  <UserX className="w-3.5 h-3.5 stroke-[2.5]" />
                                 </button>
                                 <button 
                                   onClick={() => Swal.fire({ title: 'ระบบตรวจด้วย AI', text: `กำลังเตรียมเปิดกล้องสำหรับ ${student.full_name}`, icon: 'info' })} 
-                                  className="flex items-center gap-1 bg-black text-white px-2.5 py-1.5 rounded-lg text-xs font-bold hover:bg-gray-800 transition"
+                                  className="flex items-center gap-1 bg-black text-white px-2 py-1.5 rounded-lg text-xs font-bold hover:bg-gray-800 transition"
                                 >
                                   <Camera className="w-3.5 h-3.5" />
                                   <span>AI</span>
