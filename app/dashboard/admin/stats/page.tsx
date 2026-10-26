@@ -35,7 +35,7 @@ export default function StatisticsPage() {
 
     setStats(statsData || [])
 
-    // 🟢 2. โค้ดข้อ 3: ดึงข้อมูลนักเรียนกลุ่มเสี่ยงที่แก้ไขไม่ผ่านตั้งแต่ 3 ครั้งขึ้นไปในเดือนที่เลือก
+    // 2. ดึงข้อมูลนักเรียนกลุ่มเสี่ยงที่แก้ไขไม่ผ่านตั้งแต่ 3 ครั้งขึ้นไปในเดือนที่เลือก
     const { data: riskData } = await supabase
       .from('student_monthly_correction_stats')
       .select('*')
@@ -97,7 +97,7 @@ export default function StatisticsPage() {
           </div>
         </div>
 
-        {/* 🟢 โค้ดข้อ 3: กล่องแสดงรายชื่อนักเรียนกลุ่มเสี่ยง (แก้ไขไม่ผ่าน 3 ครั้งขึ้นไป) */}
+        {/* กล่องแสดงรายชื่อนักเรียนกลุ่มเสี่ยง (แก้ไขไม่ผ่าน 3 ครั้งขึ้นไป) */}
         <div className="bg-rose-50 border border-rose-200 rounded-2xl p-5 shadow-sm space-y-4">
           <div className="flex items-center justify-between border-b border-rose-200 pb-3">
             <div className="flex items-center gap-2 text-rose-800 font-bold text-base md:text-lg">

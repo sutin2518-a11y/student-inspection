@@ -38,7 +38,7 @@ interface StudentItemStatus {
 interface InspectionMeta {
   attempt_number: number
   is_correction: boolean
-  failed_correction_count: number // จำนวนครั้งที่ตรวจแก้ไขแล้วยังไม่ผ่านในเดือนนี้
+  failed_correction_count: number
 }
 
 interface Student {
@@ -51,7 +51,7 @@ interface Student {
   gender?: string
 }
 
-export default function CompleteInspectionPage() {
+export default function TableInspectionPage() {
   const supabase = createClient()
   const router = useRouter()
 
@@ -143,7 +143,6 @@ export default function CompleteInspectionPage() {
               uniform: normalize(latest.uniform_status)
             }
 
-            // คำนวณจำนวนครั้งที่ตรวจแก้ไขแล้วยังไม่ผ่านในเดือนนี้
             const failedCorrections = studentRecords.filter(r => r.is_correction && (r.status === 'fail' || r.status === 'absent')).length
 
             currentMetas[id] = {
@@ -200,20 +199,75 @@ export default function CompleteInspectionPage() {
     setHasUnsavedChanges(true)
   }
 
+  // ฟังก์ชันกดยืนยันว่านักเรียนมาตรวจแก้ไขแล้ว แต่ "ยังไม่ผ่าน" (นับสถิติเพิ่ม +1)
+  const handleAddFailedCorrection = async (studentId: string, studentName: string) => {
+    const meta = inspectionMetas[studentId] || { attempt_number: 1, is_correction: false, failed_correction_count: 0 }
+    const nextAttempt = meta.attempt_number + 1
+
+    const result = await Swal.fire({
+      title: 'ยืนยันตรวจแก้ไขไม่ผ่าน',
+      text: `ต้องการบันทึกว่า "${studentName}" ตรวจแก้ไขแล้วยังไม่ผ่าน (ครั้งที่ ${nextAttempt}) ใช่หรือไม่?`,
+      icon: 'warning',
+      showCancelButton: true,
+      confirmButtonColor: '#dc2626',
+      cancelButtonColor: '#6b7280',
+      confirmButtonText: 'ใช่, บันทึกไม่ผ่าน',
+      cancelButtonText: 'ยกเลิก'
+    })
+
+    if (result.isConfirmed) {
+      setSaving(true)
+      const { data: { user } } = await supabase.auth.getUser()
+      const today = new Date().toISOString().split('T')[0]
+
+      const { error } = await supabase
+        .from('inspections')
+        .insert({
+          student_id: studentId,
+          inspector_id: user?.id,
+          teacher_id: user?.id,
+          status: 'fail',
+          hair_status: 'fail',
+          nails_status: 'fail',
+          uniform_status: 'fail',
+          inspection_date: today,
+          inspection_month: inspectionMonth,
+          academic_year: academicYear,
+          semester: semester,
+          attempt_number: nextAttempt,
+          is_correction: true,
+          is_resolved: false
+        })
+
+      setSaving(false)
+
+      if (error) {
+        Swal.fire('เกิดข้อผิดพลาด', error.message, 'error')
+      } else {
+        Swal.fire({
+          icon: 'success',
+          title: 'บันทึกสถิติสำเร็จ',
+          text: `เพิ่มสถิติตรวจแก้ไขไม่ผ่านของ ${studentName} เป็นครั้งที่ ${nextAttempt} แล้ว`,
+          timer: 1200,
+          showConfirmButton: false
+        })
+        fetchStudentsAndInspections()
+      }
+    }
+  }
+
   // บันทึกลงฐานข้อมูล Supabase
   const handleSaveAll = async () => {
     setSaving(true)
     const { data: { user } } = await supabase.auth.getUser()
     const today = new Date().toISOString().split('T')[0]
 
-    // แปลง absent -> waive เพื่อป้องกัน DB Constraint Error
     const toDbStatus = (st: StatusType) => (st === 'absent' ? 'waive' : st)
 
     const payload = students.map(s => {
       const st = studentStatuses[s.id] || { hair: 'pending', nails: 'pending', uniform: 'pending' }
       const meta = inspectionMetas[s.id] || { attempt_number: 1, is_correction: false, failed_correction_count: 0 }
       
-      // คำนวณสรุปภาพรวม
       let overall: StatusType = 'pass'
       if (st.hair === 'fail' || st.nails === 'fail' || st.uniform === 'fail') overall = 'fail'
       else if (st.hair === 'absent' || st.nails === 'absent' || st.uniform === 'absent') overall = 'absent'
@@ -277,7 +331,6 @@ export default function CompleteInspectionPage() {
     return st.hair !== 'pending' || st.nails !== 'pending' || st.uniform !== 'pending'
   }).length
 
-  // Component แสดงปุ่มกดและป้ายสถานะแยกรายหัวข้อ
   const renderItemControl = (studentId: string, catKey: 'hair' | 'nails' | 'uniform') => {
     const status = studentStatuses[studentId]?.[catKey] || 'pending'
 
@@ -520,20 +573,22 @@ export default function CompleteInspectionPage() {
                           </div>
                         </td>
 
-                        {/* 🟢 คอลัมน์รอบการตรวจ + Badge แสดงจำนวนครั้งที่ติดแก้ไขไม่ผ่าน (ข้อ 2) */}
+                        {/* คอลัมน์รอบการตรวจ + ปุ่มกดบันทึกเพิ่มสถิติไม่ผ่านซ้ำ */}
                         <td className="py-3.5 px-4 text-center">
                           {meta.is_correction ? (
-                            <div className="flex flex-col items-center gap-1">
+                            <div className="flex flex-col items-center gap-1.5">
                               <span className="bg-amber-100 text-amber-800 text-[11px] px-2.5 py-0.5 rounded-md font-bold flex items-center gap-1">
                                 <RefreshCw className="w-3 h-3 text-amber-700" />
                                 ตรวจแก้ไข ({meta.attempt_number})
                               </span>
                               
-                              {meta.failed_correction_count > 0 && (
-                                <span className="bg-rose-100 text-rose-700 text-[10px] px-2 py-0.5 rounded-full font-extrabold border border-rose-200 animate-pulse">
-                                  ⚠️ แก้ไขไม่ผ่าน {meta.failed_correction_count} ครั้ง
-                                </span>
-                              )}
+                              <button
+                                onClick={() => handleAddFailedCorrection(student.id, student.full_name)}
+                                className="bg-rose-50 hover:bg-rose-100 text-rose-700 hover:text-rose-800 text-[10px] px-2.5 py-1 rounded-full font-extrabold border border-rose-300 shadow-sm transition active:scale-95 flex items-center gap-1 cursor-pointer"
+                                title="กดเพื่อบันทึกว่ามาตรวจแก้ไขแล้วแต่ยังไม่ผ่าน"
+                              >
+                                <span>⚠️ ไม่ผ่านซ้ำ (+1 แก้ไข)</span>
+                              </button>
                             </div>
                           ) : (
                             <span className="inline-block bg-blue-50 text-blue-700 text-[11px] px-2.5 py-0.5 rounded-md font-bold">
