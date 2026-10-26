@@ -26,6 +26,12 @@ import {
 type StatusType = 'pass' | 'fail' | 'absent' | 'pending'
 type CategoryType = 'all' | 'hair' | 'nails' | 'uniform'
 
+interface StudentItemStatus {
+  hair: StatusType
+  nails: StatusType
+  uniform: StatusType
+}
+
 interface Student {
   id: string
   student_id: string
@@ -43,11 +49,14 @@ export default function TableInspectionPage() {
   // State
   const [selectedClass, setSelectedClass] = useState('ม.1')
   const [selectedRoom, setSelectedRoom] = useState(1)
-  const [selectedCategory, setSelectedCategory] = useState<CategoryType>('hair')
+  const [selectedCategory, setSelectedCategory] = useState<CategoryType>('all')
   const [showRoomModal, setShowRoomModal] = useState(false)
   const [showBulkDropdown, setShowBulkDropdown] = useState(false)
   const [students, setStudents] = useState<Student[]>([])
-  const [statuses, setStatuses] = useState<Record<string, StatusType>>({})
+  
+  // เก็บสถานะแยก 3 หมวดหมู่ต่อคน
+  const [studentStatuses, setStudentStatuses] = useState<Record<string, StudentItemStatus>>({})
+  
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false)
@@ -56,13 +65,6 @@ export default function TableInspectionPage() {
 
   const classes = ['ม.1', 'ม.2', 'ม.3', 'ม.4', 'ม.5', 'ม.6']
   const rooms = Array.from({ length: 15 }, (_, i) => i + 1)
-
-  const categoryLabels: Record<CategoryType, { label: string; icon: any }> = {
-    all: { label: 'ทุกรายการ', icon: Filter },
-    hair: { label: 'ทรงผม', icon: Scissors },
-    nails: { label: 'เล็บ', icon: Sparkles },
-    uniform: { label: 'การแต่งกาย', icon: Shirt },
-  }
 
   // ปิด Dropdown เมื่อคลิกข้างนอก
   useEffect(() => {
@@ -77,9 +79,9 @@ export default function TableInspectionPage() {
 
   useEffect(() => {
     fetchStudentsAndInspections()
-  }, [selectedClass, selectedRoom, selectedCategory])
+  }, [selectedClass, selectedRoom])
 
-  // ดึงข้อมูลนักเรียนและประวัติการตรวจตามหมวดหมู่
+  // ดึงข้อมูลนักเรียนและประวัติการตรวจ
   const fetchStudentsAndInspections = async () => {
     setLoading(true)
     setHasUnsavedChanges(false)
@@ -103,7 +105,7 @@ export default function TableInspectionPage() {
     setStudents(list)
 
     const studentIds = list.map(s => s.id)
-    let currentStatuses: Record<string, StatusType> = {}
+    let currentMap: Record<string, StudentItemStatus> = {}
 
     if (studentIds.length > 0) {
       const { data: inspectionData } = await supabase
@@ -114,40 +116,54 @@ export default function TableInspectionPage() {
 
       if (inspectionData) {
         inspectionData.forEach(item => {
-          let rawStatus = item.status
-          if (selectedCategory === 'hair') rawStatus = item.hair_status || item.status
-          else if (selectedCategory === 'nails') rawStatus = item.nails_status || item.status
-          else if (selectedCategory === 'uniform') rawStatus = item.uniform_status || item.status
+          const normalize = (st?: string) => (st === 'waive' ? 'absent' : st || 'pending') as StatusType
 
-          currentStatuses[item.student_id] = (rawStatus === 'waive' ? 'absent' : rawStatus || 'pending') as StatusType
+          currentMap[item.student_id] = {
+            hair: normalize(item.hair_status),
+            nails: normalize(item.nails_status),
+            uniform: normalize(item.uniform_status)
+          }
         })
       }
     }
 
     list.forEach(s => {
-      if (!currentStatuses[s.id]) {
-        currentStatuses[s.id] = 'pending'
+      if (!currentMap[s.id]) {
+        currentMap[s.id] = { hair: 'pending', nails: 'pending', uniform: 'pending' }
       }
     })
 
-    setStatuses(currentStatuses)
+    setStudentStatuses(currentMap)
     setLoading(false)
   }
 
-  // ปรับสถานะรายบุคคล
-  const handleSetStatus = (studentId: string, newStatus: StatusType) => {
-    setStatuses(prev => ({ ...prev, [studentId]: newStatus }))
+  // ปรับสถานะเฉพาะรายการ (hair/nails/uniform) รายบุคคล
+  const handleSetItemStatus = (studentId: string, category: 'hair' | 'nails' | 'uniform', newStatus: StatusType) => {
+    setStudentStatuses(prev => ({
+      ...prev,
+      [studentId]: {
+        ...(prev[studentId] || { hair: 'pending', nails: 'pending', uniform: 'pending' }),
+        [category]: newStatus
+      }
+    }))
     setHasUnsavedChanges(true)
   }
 
-  // ปรับสถานะยกห้อง
+  // ปรับสถานะแบบดร็อปดาวน์ยกห้อง
   const handleBulkSetStatus = (targetStatus: StatusType) => {
     setShowBulkDropdown(false)
-    const updated = { ...statuses }
+    const updated = { ...studentStatuses }
+    
     students.forEach(s => {
-      updated[s.id] = targetStatus
+      const current = updated[s.id] || { hair: 'pending', nails: 'pending', uniform: 'pending' }
+      if (selectedCategory === 'all') {
+        updated[s.id] = { hair: targetStatus, nails: targetStatus, uniform: targetStatus }
+      } else {
+        updated[s.id] = { ...current, [selectedCategory]: targetStatus }
+      }
     })
-    setStatuses(updated)
+
+    setStudentStatuses(updated)
     setHasUnsavedChanges(true)
   }
 
@@ -158,25 +174,24 @@ export default function TableInspectionPage() {
     const today = new Date().toISOString().split('T')[0]
 
     const payload = students.map(s => {
-      const st = statuses[s.id] || 'pending'
-      const record: any = {
+      const st = studentStatuses[s.id] || { hair: 'pending', nails: 'pending', uniform: 'pending' }
+      
+      // คำนวณสรุปภาพรวม (ถ้ามีข้อไหนไม่ผ่าน -> ไม่ผ่าน, ถ้าขาด -> ขาด)
+      let overall: StatusType = 'pass'
+      if (st.hair === 'fail' || st.nails === 'fail' || st.uniform === 'fail') overall = 'fail'
+      else if (st.hair === 'absent' || st.nails === 'absent' || st.uniform === 'absent') overall = 'absent'
+      else if (st.hair === 'pending' || st.nails === 'pending' || st.uniform === 'pending') overall = 'pending'
+
+      return {
         student_id: s.id,
         inspector_id: user?.id,
         teacher_id: user?.id,
-        status: st,
+        hair_status: st.hair,
+        nails_status: st.nails,
+        uniform_status: st.uniform,
+        status: overall,
         inspection_date: today
       }
-
-      if (selectedCategory === 'hair') record.hair_status = st
-      else if (selectedCategory === 'nails') record.nails_status = st
-      else if (selectedCategory === 'uniform') record.uniform_status = st
-      else {
-        record.hair_status = st
-        record.nails_status = st
-        record.uniform_status = st
-      }
-
-      return record
     })
 
     const { error } = await supabase
@@ -197,7 +212,7 @@ export default function TableInspectionPage() {
       Swal.fire({
         icon: 'success',
         title: 'บันทึกข้อมูลเรียบร้อย',
-        text: `บันทึกรายการ [${categoryLabels[selectedCategory].label}] ห้อง ${selectedClass}/${selectedRoom} เรียบร้อยแล้ว`,
+        text: `บันทึกผลการตรวจห้อง ${selectedClass}/${selectedRoom} ลงระบบแล้ว`,
         timer: 1300,
         showConfirmButton: false
       })
@@ -209,7 +224,52 @@ export default function TableInspectionPage() {
     router.push('/login')
   }
 
-  const inspectedCount = Object.values(statuses).filter(s => s !== 'pending').length
+  // นับจำนวนนักเรียนที่ตรวจครบแล้ว
+  const inspectedCount = students.filter(s => {
+    const st = studentStatuses[s.id]
+    if (!st) return false
+    return st.hair !== 'pending' || st.nails !== 'pending' || st.uniform !== 'pending'
+  }).length
+
+  // Component แสดงปุ่มกดและป้ายสถานะแยกรายหัวข้อ
+  const renderItemControl = (studentId: string, catKey: 'hair' | 'nails' | 'uniform') => {
+    const status = studentStatuses[studentId]?.[catKey] || 'pending'
+
+    return (
+      <div className="flex flex-col items-center gap-1.5 py-1">
+        {/* Badge สถานะ */}
+        {status === 'pass' && <span className="bg-[#16a34a] text-white text-[11px] px-2.5 py-0.5 rounded-md font-bold">ผ่าน</span>}
+        {status === 'fail' && <span className="bg-[#dc2626] text-white text-[11px] px-2.5 py-0.5 rounded-md font-bold">ไม่ผ่าน</span>}
+        {status === 'absent' && <span className="bg-[#d97706] text-white text-[11px] px-2.5 py-0.5 rounded-md font-bold">ขาด</span>}
+        {status === 'pending' && <span className="bg-gray-200 text-gray-600 text-[11px] px-2.5 py-0.5 rounded-md font-bold">รอตรวจ</span>}
+
+        {/* ปุ่มกดเลือกสถานะ 3 ปุ่ม */}
+        <div className="inline-flex items-center gap-1 bg-gray-100 p-1 rounded-lg border border-gray-200">
+          <button 
+            onClick={() => handleSetItemStatus(studentId, catKey, 'pass')} 
+            className={`p-1 rounded-md transition ${status === 'pass' ? 'bg-[#16a34a] text-white' : 'bg-white text-[#16a34a] border border-gray-200 hover:bg-emerald-50'}`}
+            title="ผ่าน"
+          >
+            <Check className="w-3.5 h-3.5 stroke-[3]" />
+          </button>
+          <button 
+            onClick={() => handleSetItemStatus(studentId, catKey, 'fail')} 
+            className={`p-1 rounded-md transition ${status === 'fail' ? 'bg-[#dc2626] text-white' : 'bg-white text-[#dc2626] border border-gray-200 hover:bg-rose-50'}`}
+            title="ไม่ผ่าน"
+          >
+            <X className="w-3.5 h-3.5 stroke-[3]" />
+          </button>
+          <button 
+            onClick={() => handleSetItemStatus(studentId, catKey, 'absent')} 
+            className={`p-1 rounded-md transition ${status === 'absent' ? 'bg-[#d97706] text-white' : 'bg-white text-[#d97706] border border-gray-200 hover:bg-amber-50'}`}
+            title="ขาดเรียน"
+          >
+            <UserX className="w-3.5 h-3.5 stroke-[2.5]" />
+          </button>
+        </div>
+      </div>
+    )
+  }
 
   return (
     <div className="min-h-screen bg-[#38bdf8]/20 pb-12 font-sans">
@@ -242,7 +302,6 @@ export default function TableInspectionPage() {
         <div className="bg-white rounded-2xl p-4 shadow-sm border border-gray-100 flex flex-wrap items-center justify-between gap-4">
           
           <div className="flex flex-wrap items-center gap-3">
-            {/* ข้อมูลห้อง */}
             <div className="flex items-center gap-2 text-gray-800 font-bold text-base md:text-lg">
               <Users className="w-5 h-5 text-blue-600" />
               <span>ห้อง: <span className="text-blue-600">{selectedClass}/{selectedRoom}</span></span>
@@ -251,17 +310,17 @@ export default function TableInspectionPage() {
               </span>
             </div>
 
-            {/* ดร็อปดาวน์เลือกรายการตรวจ (ทรงผม / เล็บ / การแต่งกาย / ทุกรายการ) */}
+            {/* ดร็อปดาวน์เลือกรายการตรวจ */}
             <div className="relative">
               <select
                 value={selectedCategory}
                 onChange={(e) => setSelectedCategory(e.target.value as CategoryType)}
                 className="appearance-none bg-blue-50 hover:bg-blue-100 text-blue-800 font-bold text-sm px-3.5 py-1.5 pr-8 rounded-xl border border-blue-200 outline-none cursor-pointer transition"
               >
+                <option value="all">📋 รายการ: ทุกรายการ (ภาพรวม)</option>
                 <option value="hair">✂️ รายการ: ทรงผม</option>
                 <option value="nails">✨ รายการ: เล็บ</option>
                 <option value="uniform">👔 รายการ: การแต่งกาย</option>
-                <option value="all">📋 รายการ: ทุกรายการ (ภาพรวม)</option>
               </select>
               <ChevronDown className="w-4 h-4 text-blue-700 absolute right-2.5 top-2.5 pointer-events-none" />
             </div>
@@ -273,7 +332,6 @@ export default function TableInspectionPage() {
             )}
           </div>
 
-          {/* ปุ่มควบคุมขวามือ */}
           <div className="flex items-center gap-2">
             {/* ดร็อปดาวน์เปลี่ยนยกห้อง */}
             <div className="relative" ref={dropdownRef}>
@@ -360,72 +418,101 @@ export default function TableInspectionPage() {
               <table className="w-full text-left border-collapse">
                 <thead>
                   <tr className="bg-gray-50 text-gray-800 font-bold text-sm border-b border-gray-200">
-                    <th className="py-4 px-6 text-center w-20">เลขที่</th>
-                    <th className="py-4 px-6">ชื่อ-สกุล</th>
-                    <th className="py-4 px-6 text-center w-32">สถานะ</th>
-                    <th className="py-4 px-6 text-center w-60">จัดการ</th>
+                    <th className="py-4 px-4 text-center w-16">เลขที่</th>
+                    <th className="py-4 px-4 min-w-[180px]">ชื่อ-สกุล</th>
+                    
+                    {selectedCategory === 'all' ? (
+                      <>
+                        <th className="py-4 px-4 text-center min-w-[140px]">✂️ ทรงผม</th>
+                        <th className="py-4 px-4 text-center min-w-[140px]">✨ เล็บ</th>
+                        <th className="py-4 px-4 text-center min-w-[140px]">👔 การแต่งกาย</th>
+                        <th className="py-4 px-4 text-center w-24">AI</th>
+                      </>
+                    ) : (
+                      <>
+                        <th className="py-4 px-6 text-center w-32">สถานะ</th>
+                        <th className="py-4 px-6 text-center w-60">จัดการ</th>
+                      </>
+                    )}
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100 text-sm">
                   {students.map((student, idx) => {
-                    const status = statuses[student.id] || 'pending'
                     const isEven = idx % 2 === 1
 
                     return (
                       <tr key={student.id} className={`transition hover:bg-blue-50/40 ${isEven ? 'bg-gray-50/60' : 'bg-white'}`}>
-                        <td className="py-3.5 px-6 text-center font-bold text-gray-800">
+                        <td className="py-3.5 px-4 text-center font-bold text-gray-800">
                           {student.number || idx + 1}
                         </td>
 
-                        <td className="py-3.5 px-6">
+                        <td className="py-3.5 px-4">
                           <div className="font-bold text-gray-900 text-base">{student.full_name}</div>
                           <div className="text-xs text-gray-500 mt-0.5 font-medium">
                             {student.student_id || '-'} | {student.gender || (student.full_name.startsWith('เด็กหญิง') || student.full_name.startsWith('นางสาว') ? 'หญิง' : 'ชาย')}
                           </div>
                         </td>
 
-                        <td className="py-3.5 px-6 text-center">
-                          {status === 'pass' && <span className="inline-block bg-[#16a34a] text-white text-xs px-3.5 py-1 rounded-lg font-bold shadow-sm">ผ่าน</span>}
-                          {status === 'fail' && <span className="inline-block bg-[#dc2626] text-white text-xs px-3.5 py-1 rounded-lg font-bold shadow-sm">ไม่ผ่าน</span>}
-                          {status === 'absent' && <span className="inline-block bg-[#d97706] text-white text-xs px-3.5 py-1 rounded-lg font-bold shadow-sm">ขาด</span>}
-                          {status === 'pending' && <span className="inline-block bg-gray-200 text-gray-600 text-xs px-3.5 py-1 rounded-lg font-bold">รอตรวจ</span>}
-                        </td>
+                        {/* กรณีเลือก "ทุกรายการ (ภาพรวม)" -> แสดง 3 คอลัมน์แยก */}
+                        {selectedCategory === 'all' ? (
+                          <>
+                            <td className="py-3.5 px-4 text-center">{renderItemControl(student.id, 'hair')}</td>
+                            <td className="py-3.5 px-4 text-center">{renderItemControl(student.id, 'nails')}</td>
+                            <td className="py-3.5 px-4 text-center">{renderItemControl(student.id, 'uniform')}</td>
+                            <td className="py-3.5 px-4 text-center">
+                              <button 
+                                onClick={() => Swal.fire({ title: 'ระบบตรวจด้วย AI', text: `กำลังเตรียมเปิดกล้องสำหรับ ${student.full_name}`, icon: 'info' })} 
+                                className="inline-flex items-center gap-1 bg-black text-white px-2.5 py-1.5 rounded-lg text-xs font-bold hover:bg-gray-800 transition"
+                              >
+                                <Camera className="w-3.5 h-3.5" />
+                                <span>AI</span>
+                              </button>
+                            </td>
+                          </>
+                        ) : (
+                          /* กรณีเลือกเฉพาะหัวข้อใดหัวข้อหนึ่ง */
+                          <>
+                            <td className="py-3.5 px-6 text-center">
+                              {studentStatuses[student.id]?.[selectedCategory] === 'pass' && <span className="inline-block bg-[#16a34a] text-white text-xs px-3.5 py-1 rounded-lg font-bold shadow-sm">ผ่าน</span>}
+                              {studentStatuses[student.id]?.[selectedCategory] === 'fail' && <span className="inline-block bg-[#dc2626] text-white text-xs px-3.5 py-1 rounded-lg font-bold shadow-sm">ไม่ผ่าน</span>}
+                              {studentStatuses[student.id]?.[selectedCategory] === 'absent' && <span className="inline-block bg-[#d97706] text-white text-xs px-3.5 py-1 rounded-lg font-bold shadow-sm">ขาด</span>}
+                              {(!studentStatuses[student.id]?.[selectedCategory] || studentStatuses[student.id]?.[selectedCategory] === 'pending') && <span className="inline-block bg-gray-200 text-gray-600 text-xs px-3.5 py-1 rounded-lg font-bold">รอตรวจ</span>}
+                            </td>
 
-                        <td className="py-3.5 px-6 text-center">
-                          <div className="inline-flex items-center gap-1.5 bg-gray-100 p-1 rounded-xl border border-gray-200">
-                            <button 
-                              onClick={() => handleSetStatus(student.id, 'pass')} 
-                              className={`p-1.5 rounded-lg transition ${status === 'pass' ? 'bg-[#16a34a] text-white shadow-sm' : 'bg-white text-[#16a34a] border border-gray-200 hover:bg-emerald-50'}`} 
-                              title="ผ่าน"
-                            >
-                              <Check className="w-4 h-4 stroke-[3]" />
-                            </button>
-
-                            <button 
-                              onClick={() => handleSetStatus(student.id, 'fail')} 
-                              className={`p-1.5 rounded-lg transition ${status === 'fail' ? 'bg-[#dc2626] text-white shadow-sm' : 'bg-white text-[#dc2626] border border-gray-200 hover:bg-rose-50'}`} 
-                              title="ไม่ผ่าน"
-                            >
-                              <X className="w-4 h-4 stroke-[3]" />
-                            </button>
-
-                            <button 
-                              onClick={() => handleSetStatus(student.id, 'absent')} 
-                              className={`p-1.5 rounded-lg transition ${status === 'absent' ? 'bg-[#d97706] text-white shadow-sm' : 'bg-white text-[#d97706] border border-gray-200 hover:bg-amber-50'}`} 
-                              title="ขาดเรียน"
-                            >
-                              <UserX className="w-4 h-4 stroke-[2.5]" />
-                            </button>
-
-                            <button 
-                              onClick={() => Swal.fire({ title: 'ระบบตรวจด้วย AI', text: `กำลังเตรียมเปิดกล้องสำหรับ ${student.full_name}`, icon: 'info' })} 
-                              className="flex items-center gap-1 bg-black text-white px-2.5 py-1.5 rounded-lg text-xs font-bold hover:bg-gray-800 transition"
-                            >
-                              <Camera className="w-3.5 h-3.5" />
-                              <span>AI</span>
-                            </button>
-                          </div>
-                        </td>
+                            <td className="py-3.5 px-6 text-center">
+                              <div className="inline-flex items-center gap-1.5 bg-gray-100 p-1 rounded-xl border border-gray-200">
+                                <button 
+                                  onClick={() => handleSetItemStatus(student.id, selectedCategory, 'pass')} 
+                                  className={`p-1.5 rounded-lg transition ${studentStatuses[student.id]?.[selectedCategory] === 'pass' ? 'bg-[#16a34a] text-white shadow-sm' : 'bg-white text-[#16a34a] border border-gray-200 hover:bg-emerald-50'}`}
+                                  title="ผ่าน"
+                                >
+                                  <Check className="w-4 h-4 stroke-[3]" />
+                                </button>
+                                <button 
+                                  onClick={() => handleSetItemStatus(student.id, selectedCategory, 'fail')} 
+                                  className={`p-1.5 rounded-lg transition ${studentStatuses[student.id]?.[selectedCategory] === 'fail' ? 'bg-[#dc2626] text-white shadow-sm' : 'bg-white text-[#dc2626] border border-gray-200 hover:bg-rose-50'}`}
+                                  title="ไม่ผ่าน"
+                                >
+                                  <X className="w-4 h-4 stroke-[3]" />
+                                </button>
+                                <button 
+                                  onClick={() => handleSetItemStatus(student.id, selectedCategory, 'absent')} 
+                                  className={`p-1.5 rounded-lg transition ${studentStatuses[student.id]?.[selectedCategory] === 'absent' ? 'bg-[#d97706] text-white shadow-sm' : 'bg-white text-[#d97706] border border-gray-200 hover:bg-amber-50'}`}
+                                  title="ขาดเรียน"
+                                >
+                                  <UserX className="w-4 h-4 stroke-[2.5]" />
+                                </button>
+                                <button 
+                                  onClick={() => Swal.fire({ title: 'ระบบตรวจด้วย AI', text: `กำลังเตรียมเปิดกล้องสำหรับ ${student.full_name}`, icon: 'info' })} 
+                                  className="flex items-center gap-1 bg-black text-white px-2.5 py-1.5 rounded-lg text-xs font-bold hover:bg-gray-800 transition"
+                                >
+                                  <Camera className="w-3.5 h-3.5" />
+                                  <span>AI</span>
+                                </button>
+                              </div>
+                            </td>
+                          </>
+                        )}
                       </tr>
                     )
                   })}
