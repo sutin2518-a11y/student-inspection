@@ -1,5 +1,5 @@
 'use client'
-// test update
+
 import { useState, useEffect, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/utils/supabase/client'
@@ -16,10 +16,15 @@ import {
   LogOut,
   ChevronDown,
   RotateCcw,
-  Save
+  Save,
+  Filter,
+  Scissors,
+  Sparkles,
+  Shirt
 } from 'lucide-react'
 
 type StatusType = 'pass' | 'fail' | 'absent' | 'pending'
+type CategoryType = 'all' | 'hair' | 'nails' | 'uniform'
 
 interface Student {
   id: string
@@ -38,6 +43,7 @@ export default function TableInspectionPage() {
   // State
   const [selectedClass, setSelectedClass] = useState('ม.1')
   const [selectedRoom, setSelectedRoom] = useState(1)
+  const [selectedCategory, setSelectedCategory] = useState<CategoryType>('hair')
   const [showRoomModal, setShowRoomModal] = useState(false)
   const [showBulkDropdown, setShowBulkDropdown] = useState(false)
   const [students, setStudents] = useState<Student[]>([])
@@ -50,6 +56,13 @@ export default function TableInspectionPage() {
 
   const classes = ['ม.1', 'ม.2', 'ม.3', 'ม.4', 'ม.5', 'ม.6']
   const rooms = Array.from({ length: 15 }, (_, i) => i + 1)
+
+  const categoryLabels: Record<CategoryType, { label: string; icon: any }> = {
+    all: { label: 'ทุกรายการ', icon: Filter },
+    hair: { label: 'ทรงผม', icon: Scissors },
+    nails: { label: 'เล็บ', icon: Sparkles },
+    uniform: { label: 'การแต่งกาย', icon: Shirt },
+  }
 
   // ปิด Dropdown เมื่อคลิกข้างนอก
   useEffect(() => {
@@ -64,9 +77,9 @@ export default function TableInspectionPage() {
 
   useEffect(() => {
     fetchStudentsAndInspections()
-  }, [selectedClass, selectedRoom])
+  }, [selectedClass, selectedRoom, selectedCategory])
 
-  // ดึงข้อมูลนักเรียนและประวัติการตรวจ
+  // ดึงข้อมูลนักเรียนและประวัติการตรวจตามหมวดหมู่
   const fetchStudentsAndInspections = async () => {
     setLoading(true)
     setHasUnsavedChanges(false)
@@ -95,13 +108,17 @@ export default function TableInspectionPage() {
     if (studentIds.length > 0) {
       const { data: inspectionData } = await supabase
         .from('inspections')
-        .select('student_id, hair_status, status')
+        .select('student_id, hair_status, nails_status, uniform_status, status')
         .in('student_id', studentIds)
         .eq('inspection_date', today)
 
       if (inspectionData) {
         inspectionData.forEach(item => {
-          const rawStatus = item.hair_status || item.status
+          let rawStatus = item.status
+          if (selectedCategory === 'hair') rawStatus = item.hair_status || item.status
+          else if (selectedCategory === 'nails') rawStatus = item.nails_status || item.status
+          else if (selectedCategory === 'uniform') rawStatus = item.uniform_status || item.status
+
           currentStatuses[item.student_id] = (rawStatus === 'waive' ? 'absent' : rawStatus || 'pending') as StatusType
         })
       }
@@ -117,13 +134,13 @@ export default function TableInspectionPage() {
     setLoading(false)
   }
 
-  // ปรับสถานะรายบุคคล (เปลี่ยนเฉพาะ UI ก่อน)
+  // ปรับสถานะรายบุคคล
   const handleSetStatus = (studentId: string, newStatus: StatusType) => {
     setStatuses(prev => ({ ...prev, [studentId]: newStatus }))
     setHasUnsavedChanges(true)
   }
 
-  // ปรับสถานะยกห้อง (สลับเปลี่ยนไปมาได้อิสระ ยังไม่บันทึกลง DB)
+  // ปรับสถานะยกห้อง
   const handleBulkSetStatus = (targetStatus: StatusType) => {
     setShowBulkDropdown(false)
     const updated = { ...statuses }
@@ -134,20 +151,33 @@ export default function TableInspectionPage() {
     setHasUnsavedChanges(true)
   }
 
-  // บันทึกลงฐานข้อมูล Supabase เมื่อกดปุ่ม "บันทึกข้อมูล"
+  // บันทึกลงฐานข้อมูล Supabase
   const handleSaveAll = async () => {
     setSaving(true)
     const { data: { user } } = await supabase.auth.getUser()
     const today = new Date().toISOString().split('T')[0]
 
-    const payload = students.map(s => ({
-      student_id: s.id,
-      inspector_id: user?.id,
-      teacher_id: user?.id,
-      hair_status: statuses[s.id] || 'pending',
-      status: statuses[s.id] || 'pending',
-      inspection_date: today
-    }))
+    const payload = students.map(s => {
+      const st = statuses[s.id] || 'pending'
+      const record: any = {
+        student_id: s.id,
+        inspector_id: user?.id,
+        teacher_id: user?.id,
+        status: st,
+        inspection_date: today
+      }
+
+      if (selectedCategory === 'hair') record.hair_status = st
+      else if (selectedCategory === 'nails') record.nails_status = st
+      else if (selectedCategory === 'uniform') record.uniform_status = st
+      else {
+        record.hair_status = st
+        record.nails_status = st
+        record.uniform_status = st
+      }
+
+      return record
+    })
 
     const { error } = await supabase
       .from('inspections')
@@ -167,7 +197,7 @@ export default function TableInspectionPage() {
       Swal.fire({
         icon: 'success',
         title: 'บันทึกข้อมูลเรียบร้อย',
-        text: `บันทึกผลการตรวจห้อง ${selectedClass}/${selectedRoom} ลงระบบแล้ว`,
+        text: `บันทึกรายการ [${categoryLabels[selectedCategory].label}] ห้อง ${selectedClass}/${selectedRoom} เรียบร้อยแล้ว`,
         timer: 1300,
         showConfirmButton: false
       })
@@ -183,14 +213,14 @@ export default function TableInspectionPage() {
 
   return (
     <div className="min-h-screen bg-[#38bdf8]/20 pb-12 font-sans">
-      {/* 1. Header สีฟ้าด่านบน */}
+      {/* Header */}
       <div className="max-w-6xl mx-auto pt-4 px-4">
         <header className="bg-[#1d4ed8] text-white px-6 py-4 rounded-2xl shadow-lg flex justify-between items-center">
           <div className="flex items-center gap-3">
             <div className="bg-white/20 p-2 rounded-xl">
               <ShieldCheck className="w-7 h-7 text-white" />
             </div>
-            <h1 className="text-xl md:text-2xl font-extrabold tracking-tight">ระบบตรวจทรงผมนักเรียน</h1>
+            <h1 className="text-xl md:text-2xl font-extrabold tracking-tight">ระบบตรวจระเบียบนักเรียน</h1>
           </div>
           
           <div className="flex items-center gap-2">
@@ -208,23 +238,44 @@ export default function TableInspectionPage() {
       </div>
 
       <main className="max-w-6xl mx-auto px-4 mt-4 space-y-4">
-        {/* 2. การ์ดแสดงห้อง + ดร็อปดาวน์ + ปุ่มบันทึกข้อมูล */}
+        {/* การ์ดจัดการห้อง + ตัวกรองรายการตรวจ */}
         <div className="bg-white rounded-2xl p-4 shadow-sm border border-gray-100 flex flex-wrap items-center justify-between gap-4">
-          <div className="flex items-center gap-2 text-gray-800 font-bold text-base md:text-lg">
-            <Users className="w-5 h-5 text-blue-600" />
-            <span>ห้อง: <span className="text-blue-600">{selectedClass}/{selectedRoom}</span></span>
-            <span className="text-sm font-normal text-gray-500">
-              ({inspectedCount} / {students.length} คน)
-            </span>
+          
+          <div className="flex flex-wrap items-center gap-3">
+            {/* ข้อมูลห้อง */}
+            <div className="flex items-center gap-2 text-gray-800 font-bold text-base md:text-lg">
+              <Users className="w-5 h-5 text-blue-600" />
+              <span>ห้อง: <span className="text-blue-600">{selectedClass}/{selectedRoom}</span></span>
+              <span className="text-sm font-normal text-gray-500">
+                ({inspectedCount} / {students.length} คน)
+              </span>
+            </div>
+
+            {/* ดร็อปดาวน์เลือกรายการตรวจ (ทรงผม / เล็บ / การแต่งกาย / ทุกรายการ) */}
+            <div className="relative">
+              <select
+                value={selectedCategory}
+                onChange={(e) => setSelectedCategory(e.target.value as CategoryType)}
+                className="appearance-none bg-blue-50 hover:bg-blue-100 text-blue-800 font-bold text-sm px-3.5 py-1.5 pr-8 rounded-xl border border-blue-200 outline-none cursor-pointer transition"
+              >
+                <option value="hair">✂️ รายการ: ทรงผม</option>
+                <option value="nails">✨ รายการ: เล็บ</option>
+                <option value="uniform">👔 รายการ: การแต่งกาย</option>
+                <option value="all">📋 รายการ: ทุกรายการ (ภาพรวม)</option>
+              </select>
+              <ChevronDown className="w-4 h-4 text-blue-700 absolute right-2.5 top-2.5 pointer-events-none" />
+            </div>
+
             {hasUnsavedChanges && (
-              <span className="ml-2 text-xs bg-amber-100 text-amber-700 px-2.5 py-0.5 rounded-full font-bold animate-pulse">
+              <span className="text-xs bg-amber-100 text-amber-700 px-2.5 py-0.5 rounded-full font-bold animate-pulse">
                 • ยังไม่ได้บันทึก
               </span>
             )}
           </div>
 
+          {/* ปุ่มควบคุมขวามือ */}
           <div className="flex items-center gap-2">
-            {/* ปุ่มดร็อปดาวน์เลือกเปลี่ยนสถานะยกห้อง (สลับไปมาได้ตลอดเวลา) */}
+            {/* ดร็อปดาวน์เปลี่ยนยกห้อง */}
             <div className="relative" ref={dropdownRef}>
               <button
                 onClick={() => setShowBulkDropdown(!showBulkDropdown)}
@@ -274,7 +325,7 @@ export default function TableInspectionPage() {
               )}
             </div>
 
-            {/* ปุ่มบันทึกข้อมูลลงฐานข้อมูล */}
+            {/* ปุ่มบันทึกข้อมูล */}
             <button
               onClick={handleSaveAll}
               disabled={saving || students.length === 0}
@@ -298,7 +349,7 @@ export default function TableInspectionPage() {
           </div>
         </div>
 
-        {/* 3. ตารางแสดงรายชื่อนักเรียน */}
+        {/* ตารางแสดงรายชื่อนักเรียน */}
         <div className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden">
           {loading ? (
             <div className="p-12 text-center text-gray-400">กำลังดึงข้อมูลรายชื่อนักเรียน...</div>
@@ -322,12 +373,10 @@ export default function TableInspectionPage() {
 
                     return (
                       <tr key={student.id} className={`transition hover:bg-blue-50/40 ${isEven ? 'bg-gray-50/60' : 'bg-white'}`}>
-                        {/* เลขที่ */}
                         <td className="py-3.5 px-6 text-center font-bold text-gray-800">
                           {student.number || idx + 1}
                         </td>
 
-                        {/* ชื่อ-สกุล */}
                         <td className="py-3.5 px-6">
                           <div className="font-bold text-gray-900 text-base">{student.full_name}</div>
                           <div className="text-xs text-gray-500 mt-0.5 font-medium">
@@ -335,31 +384,13 @@ export default function TableInspectionPage() {
                           </div>
                         </td>
 
-                        {/* สถานะ Badge */}
                         <td className="py-3.5 px-6 text-center">
-                          {status === 'pass' && (
-                            <span className="inline-block bg-[#16a34a] text-white text-xs px-3.5 py-1 rounded-lg font-bold shadow-sm">
-                              ผ่าน
-                            </span>
-                          )}
-                          {status === 'fail' && (
-                            <span className="inline-block bg-[#dc2626] text-white text-xs px-3.5 py-1 rounded-lg font-bold shadow-sm">
-                              ไม่ผ่าน
-                            </span>
-                          )}
-                          {status === 'absent' && (
-                            <span className="inline-block bg-[#d97706] text-white text-xs px-3.5 py-1 rounded-lg font-bold shadow-sm">
-                              ขาด
-                            </span>
-                          )}
-                          {status === 'pending' && (
-                            <span className="inline-block bg-gray-200 text-gray-600 text-xs px-3.5 py-1 rounded-lg font-bold">
-                              รอตรวจ
-                            </span>
-                          )}
+                          {status === 'pass' && <span className="inline-block bg-[#16a34a] text-white text-xs px-3.5 py-1 rounded-lg font-bold shadow-sm">ผ่าน</span>}
+                          {status === 'fail' && <span className="inline-block bg-[#dc2626] text-white text-xs px-3.5 py-1 rounded-lg font-bold shadow-sm">ไม่ผ่าน</span>}
+                          {status === 'absent' && <span className="inline-block bg-[#d97706] text-white text-xs px-3.5 py-1 rounded-lg font-bold shadow-sm">ขาด</span>}
+                          {status === 'pending' && <span className="inline-block bg-gray-200 text-gray-600 text-xs px-3.5 py-1 rounded-lg font-bold">รอตรวจ</span>}
                         </td>
 
-                        {/* ปุ่มจัดการรายคน */}
                         <td className="py-3.5 px-6 text-center">
                           <div className="inline-flex items-center gap-1.5 bg-gray-100 p-1 rounded-xl border border-gray-200">
                             <button 
