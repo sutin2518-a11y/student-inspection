@@ -439,8 +439,9 @@ export default function CompleteInspectionPage() {
 
       <main className="max-w-6xl mx-auto px-4 mt-4 space-y-4">
         {/* การ์ดจัดการห้อง + ปุ่มการทำงาน */}
-        <div className="bg-white rounded-2xl p-4 shadow-sm border border-gray-100 flex flex-wrap items-center justify-between gap-4">
+        <div className="bg-white rounded-2xl p-4 shadow-sm border border-gray-100 flex flex-wrap items-center gap-3 w-full">
           
+          {/* ฝั่งซ้าย: ข้อมูลห้อง + เลือกเดือน + เลือกหมวดหมู่ */}
           <div className="flex flex-wrap items-center gap-3">
             <div className="flex items-center gap-2 text-gray-800 font-bold text-base md:text-lg">
               <Users className="w-5 h-5 text-blue-600" />
@@ -482,6 +483,7 @@ export default function CompleteInspectionPage() {
             )}
           </div>
 
+          {/* กลุ่มปุ่มจัดการห้อง (อยู่ฝั่งซ้ายของปุ่ม Export) */}
           <div className="flex flex-wrap items-center gap-2">
             {/* ดร็อปดาวน์เปลี่ยนยกห้อง */}
             <div className="relative" ref={dropdownRef}>
@@ -554,20 +556,17 @@ export default function CompleteInspectionPage() {
             >
               <ArrowLeft className="w-4 h-4" /> เปลี่ยนห้อง
             </button>
-
-            {/* 🟢 เส้นแบ่งแนวตั้ง เพื่อคั่นแยกกลุ่มปุ่มส่งออกข้อมูล */}
-            <div className="h-6 w-[1px] bg-gray-300 mx-1 hidden sm:block" />
-
-            {/* 🟢 ปุ่มดาวน์โหลดไฟล์ Excel (จัดวางไว้ขวาสุด เด่นชัดเจน) */}
-            <button
-              onClick={handleExportExcel}
-              disabled={loading || students.length === 0}
-              className="flex items-center gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 rounded-xl text-sm font-bold shadow-md hover:shadow-lg transition active:scale-95 disabled:opacity-50 ring-2 ring-emerald-600/20"
-            >
-              <Download className="w-4 h-4" />
-              <span>ส่งออก Excel</span>
-            </button>
           </div>
+
+          {/* 🟢 ปุ่มส่งออก Excel (ชิดกรอบขวาสุดด้วย ml-auto) */}
+          <button
+            onClick={handleExportExcel}
+            disabled={loading || students.length === 0}
+            className="ml-auto flex items-center gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 rounded-xl text-sm font-bold shadow-md hover:shadow-lg transition active:scale-95 disabled:opacity-50 ring-2 ring-emerald-600/20"
+          >
+            <Download className="w-4 h-4" />
+            <span>ส่งออก Excel</span>
+          </button>
         </div>
 
         {/* ตารางแสดงรายชื่อนักเรียน */}
