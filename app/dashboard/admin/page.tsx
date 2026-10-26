@@ -22,7 +22,8 @@ import {
   Shirt,
   BarChart3,
   RefreshCw,
-  Calendar
+  Calendar,
+  AlertTriangle
 } from 'lucide-react'
 
 type StatusType = 'pass' | 'fail' | 'absent' | 'pending'
@@ -37,7 +38,7 @@ interface StudentItemStatus {
 interface InspectionMeta {
   attempt_number: number
   is_correction: boolean
-  correction_count: number
+  failed_correction_count: number // จำนวนครั้งที่ตรวจแก้ไขแล้วยังไม่ผ่านในเดือนนี้
 }
 
 interface Student {
@@ -142,11 +143,13 @@ export default function CompleteInspectionPage() {
               uniform: normalize(latest.uniform_status)
             }
 
-            const correctionAttempts = studentRecords.filter(r => r.is_correction).length
+            // คำนวณจำนวนครั้งที่ตรวจแก้ไขแล้วยังไม่ผ่านในเดือนนี้
+            const failedCorrections = studentRecords.filter(r => r.is_correction && (r.status === 'fail' || r.status === 'absent')).length
+
             currentMetas[id] = {
               attempt_number: latest.attempt_number || 1,
               is_correction: latest.is_correction || (latest.status === 'fail' || latest.status === 'absent'),
-              correction_count: correctionAttempts
+              failed_correction_count: failedCorrections
             }
           }
         })
@@ -158,7 +161,7 @@ export default function CompleteInspectionPage() {
         currentStatuses[s.id] = { hair: 'pending', nails: 'pending', uniform: 'pending' }
       }
       if (!currentMetas[s.id]) {
-        currentMetas[s.id] = { attempt_number: 1, is_correction: false, correction_count: 0 }
+        currentMetas[s.id] = { attempt_number: 1, is_correction: false, failed_correction_count: 0 }
       }
     })
 
@@ -203,11 +206,14 @@ export default function CompleteInspectionPage() {
     const { data: { user } } = await supabase.auth.getUser()
     const today = new Date().toISOString().split('T')[0]
 
+    // แปลง absent -> waive เพื่อป้องกัน DB Constraint Error
+    const toDbStatus = (st: StatusType) => (st === 'absent' ? 'waive' : st)
+
     const payload = students.map(s => {
       const st = studentStatuses[s.id] || { hair: 'pending', nails: 'pending', uniform: 'pending' }
-      const meta = inspectionMetas[s.id] || { attempt_number: 1, is_correction: false, correction_count: 0 }
+      const meta = inspectionMetas[s.id] || { attempt_number: 1, is_correction: false, failed_correction_count: 0 }
       
-      // คำนวณสรุปภาพรวม (ถ้ามีข้อไหนไม่ผ่าน -> ไม่ผ่าน, ถ้าขาด -> ขาด)
+      // คำนวณสรุปภาพรวม
       let overall: StatusType = 'pass'
       if (st.hair === 'fail' || st.nails === 'fail' || st.uniform === 'fail') overall = 'fail'
       else if (st.hair === 'absent' || st.nails === 'absent' || st.uniform === 'absent') overall = 'absent'
@@ -220,10 +226,10 @@ export default function CompleteInspectionPage() {
         student_id: s.id,
         inspector_id: user?.id,
         teacher_id: user?.id,
-        hair_status: st.hair,
-        nails_status: st.nails,
-        uniform_status: st.uniform,
-        status: overall,
+        hair_status: toDbStatus(st.hair),
+        nails_status: toDbStatus(st.nails),
+        uniform_status: toDbStatus(st.uniform),
+        status: toDbStatus(overall),
         inspection_date: today,
         inspection_month: inspectionMonth,
         academic_year: academicYear,
@@ -265,7 +271,6 @@ export default function CompleteInspectionPage() {
     router.push('/login')
   }
 
-  // นับจำนวนนักเรียนที่ตรวจครบแล้ว
   const inspectedCount = students.filter(s => {
     const st = studentStatuses[s.id]
     if (!st) return false
@@ -278,13 +283,11 @@ export default function CompleteInspectionPage() {
 
     return (
       <div className="flex flex-col items-center gap-1.5 py-1">
-        {/* Badge สถานะ */}
         {status === 'pass' && <span className="bg-[#16a34a] text-white text-[11px] px-2.5 py-0.5 rounded-md font-bold">ผ่าน</span>}
         {status === 'fail' && <span className="bg-[#dc2626] text-white text-[11px] px-2.5 py-0.5 rounded-md font-bold">ไม่ผ่าน</span>}
         {status === 'absent' && <span className="bg-[#d97706] text-white text-[11px] px-2.5 py-0.5 rounded-md font-bold">ขาด</span>}
         {status === 'pending' && <span className="bg-gray-200 text-gray-600 text-[11px] px-2.5 py-0.5 rounded-md font-bold">รอตรวจ</span>}
 
-        {/* ปุ่มกดเลือกสถานะ 3 ปุ่ม */}
         <div className="inline-flex items-center gap-1 bg-gray-100 p-1 rounded-lg border border-gray-200">
           <button 
             onClick={() => handleSetItemStatus(studentId, catKey, 'pass')} 
@@ -348,7 +351,7 @@ export default function CompleteInspectionPage() {
       </div>
 
       <main className="max-w-6xl mx-auto px-4 mt-4 space-y-4">
-        {/* การ์ดจัดการห้อง + ตัวกรองรายการตรวจ + เลือกรอบเดือน */}
+        {/* การ์ดจัดการห้อง + ตัวกรองรายการตรวจ */}
         <div className="bg-white rounded-2xl p-4 shadow-sm border border-gray-100 flex flex-wrap items-center justify-between gap-4">
           
           <div className="flex flex-wrap items-center gap-3">
@@ -482,7 +485,7 @@ export default function CompleteInspectionPage() {
                   <tr className="bg-gray-50 text-gray-800 font-bold text-sm border-b border-gray-200">
                     <th className="py-4 px-4 text-center w-16">เลขที่</th>
                     <th className="py-4 px-4 min-w-[180px]">ชื่อ-สกุล</th>
-                    <th className="py-4 px-4 text-center w-36">รอบการตรวจ</th>
+                    <th className="py-4 px-4 text-center w-40">รอบการตรวจ</th>
                     
                     {selectedCategory === 'all' ? (
                       <>
@@ -502,7 +505,7 @@ export default function CompleteInspectionPage() {
                 <tbody className="divide-y divide-gray-100 text-sm">
                   {students.map((student, idx) => {
                     const isEven = idx % 2 === 1
-                    const meta = inspectionMetas[student.id] || { attempt_number: 1, is_correction: false, correction_count: 0 }
+                    const meta = inspectionMetas[student.id] || { attempt_number: 1, is_correction: false, failed_correction_count: 0 }
 
                     return (
                       <tr key={student.id} className={`transition hover:bg-blue-50/40 ${isEven ? 'bg-gray-50/60' : 'bg-white'}`}>
@@ -517,21 +520,29 @@ export default function CompleteInspectionPage() {
                           </div>
                         </td>
 
-                        {/* แสดงประเภทการตรวจ (ครั้งแรก / ตรวจแก้ไข) */}
+                        {/* 🟢 คอลัมน์รอบการตรวจ + Badge แสดงจำนวนครั้งที่ติดแก้ไขไม่ผ่าน (ข้อ 2) */}
                         <td className="py-3.5 px-4 text-center">
                           {meta.is_correction ? (
-                            <span className="inline-flex items-center gap-1 bg-amber-100 text-amber-800 text-[11px] px-2.5 py-1 rounded-md font-bold">
-                              <RefreshCw className="w-3 h-3 text-amber-700" />
-                              แก้ไข ({meta.correction_count > 0 ? meta.correction_count : 1})
-                            </span>
+                            <div className="flex flex-col items-center gap-1">
+                              <span className="bg-amber-100 text-amber-800 text-[11px] px-2.5 py-0.5 rounded-md font-bold flex items-center gap-1">
+                                <RefreshCw className="w-3 h-3 text-amber-700" />
+                                ตรวจแก้ไข ({meta.attempt_number})
+                              </span>
+                              
+                              {meta.failed_correction_count > 0 && (
+                                <span className="bg-rose-100 text-rose-700 text-[10px] px-2 py-0.5 rounded-full font-extrabold border border-rose-200 animate-pulse">
+                                  ⚠️ แก้ไขไม่ผ่าน {meta.failed_correction_count} ครั้ง
+                                </span>
+                              )}
+                            </div>
                           ) : (
-                            <span className="inline-block bg-blue-50 text-blue-700 text-[11px] px-2.5 py-1 rounded-md font-bold">
+                            <span className="inline-block bg-blue-50 text-blue-700 text-[11px] px-2.5 py-0.5 rounded-md font-bold">
                               ประจำเดือน
                             </span>
                           )}
                         </td>
 
-                        {/* กรณีเลือก "ทุกรายการ (ภาพรวม)" -> แสดง 3 คอลัมน์แยก */}
+                        {/* กรณีเลือก "ทุกรายการ (ภาพรวม)" */}
                         {selectedCategory === 'all' ? (
                           <>
                             <td className="py-3.5 px-4 text-center">{renderItemControl(student.id, 'hair')}</td>
