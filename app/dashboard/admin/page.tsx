@@ -17,10 +17,12 @@ import {
   ChevronDown,
   RotateCcw,
   Save,
-  Filter,
   Scissors,
   Sparkles,
-  Shirt
+  Shirt,
+  BarChart3,
+  RefreshCw,
+  Calendar
 } from 'lucide-react'
 
 type StatusType = 'pass' | 'fail' | 'absent' | 'pending'
@@ -30,6 +32,12 @@ interface StudentItemStatus {
   hair: StatusType
   nails: StatusType
   uniform: StatusType
+}
+
+interface InspectionMeta {
+  attempt_number: number
+  is_correction: boolean
+  correction_count: number
 }
 
 interface Student {
@@ -42,20 +50,26 @@ interface Student {
   gender?: string
 }
 
-export default function TableInspectionPage() {
+export default function CompleteInspectionPage() {
   const supabase = createClient()
   const router = useRouter()
 
-  // State
+  // State สำหรับจัดการตารางและการเลือกห้อง
   const [selectedClass, setSelectedClass] = useState('ม.1')
   const [selectedRoom, setSelectedRoom] = useState(1)
   const [selectedCategory, setSelectedCategory] = useState<CategoryType>('all')
   const [showRoomModal, setShowRoomModal] = useState(false)
   const [showBulkDropdown, setShowBulkDropdown] = useState(false)
-  const [students, setStudents] = useState<Student[]>([])
   
-  // เก็บสถานะแยก 3 หมวดหมู่ต่อคน
+  // State สำหรับรอบการตรวจและสถิติ
+  const [academicYear, setAcademicYear] = useState('2569')
+  const [semester, setSemester] = useState('2')
+  const [inspectionMonth, setInspectionMonth] = useState(new Date().toISOString().slice(0, 7))
+
+  // State ข้อมูลนักเรียนและสถานะการตรวจ
+  const [students, setStudents] = useState<Student[]>([])
   const [studentStatuses, setStudentStatuses] = useState<Record<string, StudentItemStatus>>({})
+  const [inspectionMetas, setInspectionMetas] = useState<Record<string, InspectionMeta>>({})
   
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
@@ -79,13 +93,12 @@ export default function TableInspectionPage() {
 
   useEffect(() => {
     fetchStudentsAndInspections()
-  }, [selectedClass, selectedRoom])
+  }, [selectedClass, selectedRoom, inspectionMonth])
 
-  // ดึงข้อมูลนักเรียนและประวัติการตรวจ
+  // ดึงข้อมูลนักเรียนและประวัติการตรวจในรอบเดือน
   const fetchStudentsAndInspections = async () => {
     setLoading(true)
     setHasUnsavedChanges(false)
-    const today = new Date().toISOString().split('T')[0]
 
     const { data: studentData, error: studentError } = await supabase
       .from('profiles')
@@ -105,35 +118,52 @@ export default function TableInspectionPage() {
     setStudents(list)
 
     const studentIds = list.map(s => s.id)
-    let currentMap: Record<string, StudentItemStatus> = {}
+    let currentStatuses: Record<string, StudentItemStatus> = {}
+    let currentMetas: Record<string, InspectionMeta> = {}
 
     if (studentIds.length > 0) {
       const { data: inspectionData } = await supabase
         .from('inspections')
-        .select('student_id, hair_status, nails_status, uniform_status, status')
+        .select('student_id, hair_status, nails_status, uniform_status, status, attempt_number, is_correction')
         .in('student_id', studentIds)
-        .eq('inspection_date', today)
+        .eq('inspection_month', inspectionMonth)
+        .order('attempt_number', { ascending: false })
 
       if (inspectionData) {
-        inspectionData.forEach(item => {
-          const normalize = (st?: string) => (st === 'waive' ? 'absent' : st || 'pending') as StatusType
+        studentIds.forEach(id => {
+          const studentRecords = inspectionData.filter(item => item.student_id === id)
+          if (studentRecords.length > 0) {
+            const latest = studentRecords[0]
+            const normalize = (st?: string) => (st === 'waive' ? 'absent' : st || 'pending') as StatusType
 
-          currentMap[item.student_id] = {
-            hair: normalize(item.hair_status),
-            nails: normalize(item.nails_status),
-            uniform: normalize(item.uniform_status)
+            currentStatuses[id] = {
+              hair: normalize(latest.hair_status),
+              nails: normalize(latest.nails_status),
+              uniform: normalize(latest.uniform_status)
+            }
+
+            const correctionAttempts = studentRecords.filter(r => r.is_correction).length
+            currentMetas[id] = {
+              attempt_number: latest.attempt_number || 1,
+              is_correction: latest.is_correction || (latest.status === 'fail' || latest.status === 'absent'),
+              correction_count: correctionAttempts
+            }
           }
         })
       }
     }
 
     list.forEach(s => {
-      if (!currentMap[s.id]) {
-        currentMap[s.id] = { hair: 'pending', nails: 'pending', uniform: 'pending' }
+      if (!currentStatuses[s.id]) {
+        currentStatuses[s.id] = { hair: 'pending', nails: 'pending', uniform: 'pending' }
+      }
+      if (!currentMetas[s.id]) {
+        currentMetas[s.id] = { attempt_number: 1, is_correction: false, correction_count: 0 }
       }
     })
 
-    setStudentStatuses(currentMap)
+    setStudentStatuses(currentStatuses)
+    setInspectionMetas(currentMetas)
     setLoading(false)
   }
 
@@ -175,12 +205,16 @@ export default function TableInspectionPage() {
 
     const payload = students.map(s => {
       const st = studentStatuses[s.id] || { hair: 'pending', nails: 'pending', uniform: 'pending' }
+      const meta = inspectionMetas[s.id] || { attempt_number: 1, is_correction: false, correction_count: 0 }
       
       // คำนวณสรุปภาพรวม (ถ้ามีข้อไหนไม่ผ่าน -> ไม่ผ่าน, ถ้าขาด -> ขาด)
       let overall: StatusType = 'pass'
       if (st.hair === 'fail' || st.nails === 'fail' || st.uniform === 'fail') overall = 'fail'
       else if (st.hair === 'absent' || st.nails === 'absent' || st.uniform === 'absent') overall = 'absent'
       else if (st.hair === 'pending' || st.nails === 'pending' || st.uniform === 'pending') overall = 'pending'
+
+      const isCorrectionCheck = meta.is_correction || overall === 'fail' || overall === 'absent'
+      const newAttemptNumber = isCorrectionCheck && overall === 'pass' ? meta.attempt_number + 1 : meta.attempt_number
 
       return {
         student_id: s.id,
@@ -190,7 +224,13 @@ export default function TableInspectionPage() {
         nails_status: st.nails,
         uniform_status: st.uniform,
         status: overall,
-        inspection_date: today
+        inspection_date: today,
+        inspection_month: inspectionMonth,
+        academic_year: academicYear,
+        semester: semester,
+        attempt_number: newAttemptNumber,
+        is_correction: isCorrectionCheck,
+        is_resolved: isCorrectionCheck && overall === 'pass'
       }
     })
 
@@ -212,10 +252,11 @@ export default function TableInspectionPage() {
       Swal.fire({
         icon: 'success',
         title: 'บันทึกข้อมูลเรียบร้อย',
-        text: `บันทึกผลการตรวจห้อง ${selectedClass}/${selectedRoom} ลงระบบแล้ว`,
+        text: `บันทึกผลการตรวจประจำเดือน ${inspectionMonth} ห้อง ${selectedClass}/${selectedRoom} เรียบร้อยแล้ว`,
         timer: 1300,
         showConfirmButton: false
       })
+      fetchStudentsAndInspections()
     }
   }
 
@@ -280,10 +321,19 @@ export default function TableInspectionPage() {
             <div className="bg-white/20 p-2 rounded-xl">
               <ShieldCheck className="w-7 h-7 text-white" />
             </div>
-            <h1 className="text-xl md:text-2xl font-extrabold tracking-tight">ระบบตรวจระเบียบนักเรียน</h1>
+            <div>
+              <h1 className="text-xl md:text-2xl font-extrabold tracking-tight">ระบบตรวจระเบียบนักเรียน</h1>
+              <p className="text-xs text-blue-200">ปีการศึกษา {academicYear} ภาคเรียนที่ {semester}</p>
+            </div>
           </div>
           
           <div className="flex items-center gap-2">
+            <button 
+              onClick={() => router.push('/dashboard/admin/stats')}
+              className="flex items-center gap-1.5 bg-white/20 hover:bg-white/30 text-white px-3.5 py-1.5 rounded-lg text-sm font-bold transition"
+            >
+              <BarChart3 size={16} /> สถิติสะสม
+            </button>
             <button 
               onClick={handleLogout}
               className="flex items-center gap-1.5 text-white bg-white/10 hover:bg-white/20 px-3 py-1.5 rounded-lg text-sm font-medium transition"
@@ -298,7 +348,7 @@ export default function TableInspectionPage() {
       </div>
 
       <main className="max-w-6xl mx-auto px-4 mt-4 space-y-4">
-        {/* การ์ดจัดการห้อง + ตัวกรองรายการตรวจ */}
+        {/* การ์ดจัดการห้อง + ตัวกรองรายการตรวจ + เลือกรอบเดือน */}
         <div className="bg-white rounded-2xl p-4 shadow-sm border border-gray-100 flex flex-wrap items-center justify-between gap-4">
           
           <div className="flex flex-wrap items-center gap-3">
@@ -308,6 +358,18 @@ export default function TableInspectionPage() {
               <span className="text-sm font-normal text-gray-500">
                 ({inspectedCount} / {students.length} คน)
               </span>
+            </div>
+
+            {/* เลือกรอบประจำเดือน */}
+            <div className="flex items-center gap-1.5 bg-gray-50 border border-gray-200 px-3 py-1.5 rounded-xl text-xs font-bold text-gray-700">
+              <Calendar className="w-3.5 h-3.5 text-blue-600" />
+              <span>รอบเดือน:</span>
+              <input
+                type="month"
+                value={inspectionMonth}
+                onChange={(e) => setInspectionMonth(e.target.value)}
+                className="bg-transparent font-bold outline-none cursor-pointer text-blue-800"
+              />
             </div>
 
             {/* ดร็อปดาวน์เลือกรายการตรวจ */}
@@ -420,6 +482,7 @@ export default function TableInspectionPage() {
                   <tr className="bg-gray-50 text-gray-800 font-bold text-sm border-b border-gray-200">
                     <th className="py-4 px-4 text-center w-16">เลขที่</th>
                     <th className="py-4 px-4 min-w-[180px]">ชื่อ-สกุล</th>
+                    <th className="py-4 px-4 text-center w-36">รอบการตรวจ</th>
                     
                     {selectedCategory === 'all' ? (
                       <>
@@ -439,6 +502,7 @@ export default function TableInspectionPage() {
                 <tbody className="divide-y divide-gray-100 text-sm">
                   {students.map((student, idx) => {
                     const isEven = idx % 2 === 1
+                    const meta = inspectionMetas[student.id] || { attempt_number: 1, is_correction: false, correction_count: 0 }
 
                     return (
                       <tr key={student.id} className={`transition hover:bg-blue-50/40 ${isEven ? 'bg-gray-50/60' : 'bg-white'}`}>
@@ -451,6 +515,20 @@ export default function TableInspectionPage() {
                           <div className="text-xs text-gray-500 mt-0.5 font-medium">
                             {student.student_id || '-'} | {student.gender || (student.full_name.startsWith('เด็กหญิง') || student.full_name.startsWith('นางสาว') ? 'หญิง' : 'ชาย')}
                           </div>
+                        </td>
+
+                        {/* แสดงประเภทการตรวจ (ครั้งแรก / ตรวจแก้ไข) */}
+                        <td className="py-3.5 px-4 text-center">
+                          {meta.is_correction ? (
+                            <span className="inline-flex items-center gap-1 bg-amber-100 text-amber-800 text-[11px] px-2.5 py-1 rounded-md font-bold">
+                              <RefreshCw className="w-3 h-3 text-amber-700" />
+                              แก้ไข ({meta.correction_count > 0 ? meta.correction_count : 1})
+                            </span>
+                          ) : (
+                            <span className="inline-block bg-blue-50 text-blue-700 text-[11px] px-2.5 py-1 rounded-md font-bold">
+                              ประจำเดือน
+                            </span>
+                          )}
                         </td>
 
                         {/* กรณีเลือก "ทุกรายการ (ภาพรวม)" -> แสดง 3 คอลัมน์แยก */}
