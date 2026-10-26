@@ -7,7 +7,6 @@ import Swal from 'sweetalert2'
 import { 
   ShieldCheck, 
   Users, 
-  CheckCircle2, 
   ArrowLeft, 
   Check, 
   X, 
@@ -16,7 +15,8 @@ import {
   Menu,
   LogOut,
   ChevronDown,
-  RotateCcw
+  RotateCcw,
+  Save
 } from 'lucide-react'
 
 type StatusType = 'pass' | 'fail' | 'absent' | 'pending'
@@ -44,6 +44,7 @@ export default function TableInspectionPage() {
   const [statuses, setStatuses] = useState<Record<string, StatusType>>({})
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
+  const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false)
 
   const dropdownRef = useRef<HTMLDivElement>(null)
 
@@ -68,6 +69,7 @@ export default function TableInspectionPage() {
   // ดึงข้อมูลนักเรียนและประวัติการตรวจ
   const fetchStudentsAndInspections = async () => {
     setLoading(true)
+    setHasUnsavedChanges(false)
     const today = new Date().toISOString().split('T')[0]
 
     const { data: studentData, error: studentError } = await supabase
@@ -100,7 +102,6 @@ export default function TableInspectionPage() {
       if (inspectionData) {
         inspectionData.forEach(item => {
           const rawStatus = item.hair_status || item.status
-          // แปลง waive เก่าให้เป็น absent หรือตาม DB
           currentStatuses[item.student_id] = (rawStatus === 'waive' ? 'absent' : rawStatus || 'pending') as StatusType
         })
       }
@@ -116,81 +117,61 @@ export default function TableInspectionPage() {
     setLoading(false)
   }
 
-  // ปรับสถานะรายบุคคล
-  const handleSetStatus = async (studentId: string, newStatus: StatusType) => {
+  // ปรับสถานะรายบุคคล (เปลี่ยนเฉพาะ UI ก่อน)
+  const handleSetStatus = (studentId: string, newStatus: StatusType) => {
     setStatuses(prev => ({ ...prev, [studentId]: newStatus }))
-    const { data: { user } } = await supabase.auth.getUser()
-    const today = new Date().toISOString().split('T')[0]
-
-    await supabase
-      .from('inspections')
-      .upsert({
-        student_id: studentId,
-        inspector_id: user?.id,
-        teacher_id: user?.id,
-        hair_status: newStatus,
-        status: newStatus,
-        inspection_date: today
-      }, { onConflict: 'student_id, inspection_date' })
+    setHasUnsavedChanges(true)
   }
 
-  // ปรับสถานะแบบดร็อปดาวน์ยกห้อง ( pass / fail / absent / reset )
-  const handleBulkSetStatus = async (targetStatus: StatusType | 'reset') => {
+  // ปรับสถานะยกห้อง (สลับเปลี่ยนไปมาได้อิสระ ยังไม่บันทึกลง DB)
+  const handleBulkSetStatus = (targetStatus: StatusType) => {
     setShowBulkDropdown(false)
+    const updated = { ...statuses }
+    students.forEach(s => {
+      updated[s.id] = targetStatus
+    })
+    setStatuses(updated)
+    setHasUnsavedChanges(true)
+  }
+
+  // บันทึกลงฐานข้อมูล Supabase เมื่อกดปุ่ม "บันทึกข้อมูล"
+  const handleSaveAll = async () => {
     setSaving(true)
     const { data: { user } } = await supabase.auth.getUser()
     const today = new Date().toISOString().split('T')[0]
 
-    const updated = { ...statuses }
-    const payload: any[] = []
+    const payload = students.map(s => ({
+      student_id: s.id,
+      inspector_id: user?.id,
+      teacher_id: user?.id,
+      hair_status: statuses[s.id] || 'pending',
+      status: statuses[s.id] || 'pending',
+      inspection_date: today
+    }))
 
-    students.forEach(s => {
-      if (targetStatus === 'reset') {
-        updated[s.id] = 'pending'
-      } else if (updated[s.id] === 'pending') {
-        updated[s.id] = targetStatus
-        payload.push({
-          student_id: s.id,
-          inspector_id: user?.id,
-          teacher_id: user?.id,
-          hair_status: targetStatus,
-          status: targetStatus,
-          inspection_date: today
-        })
-      }
-    })
-
-    setStatuses(updated)
-
-    if (targetStatus === 'reset') {
-      const studentIds = students.map(s => s.id)
-      if (studentIds.length > 0) {
-        await supabase
-          .from('inspections')
-          .delete()
-          .in('student_id', studentIds)
-          .eq('inspection_date', today)
-      }
-    } else if (payload.length > 0) {
-      await supabase.from('inspections').upsert(payload, { onConflict: 'student_id, inspection_date' })
-    }
+    const { error } = await supabase
+      .from('inspections')
+      .upsert(payload, { onConflict: 'student_id, inspection_date' })
 
     setSaving(false)
 
-    const titleMap: Record<string, string> = {
-      pass: 'ตั้งค่า "ผ่าน" ให้กับนักเรียนที่เหลือแล้ว',
-      fail: 'ตั้งค่า "ไม่ผ่าน" ให้กับนักเรียนที่เหลือแล้ว',
-      absent: 'ตั้งค่า "ขาด" ให้กับนักเรียนที่เหลือแล้ว',
-      reset: 'รีเซ็ตสถานะนักเรียนทั้งหมดเป็น "รอตรวจ" แล้ว'
+    if (error) {
+      Swal.fire({
+        icon: 'error',
+        title: 'บันทึกไม่สำเร็จ',
+        text: error.message,
+        confirmButtonColor: '#1d4ed8'
+      })
+    } else {
+      setHasUnsavedChanges(false)
+      Swal.fire({
+        icon: 'success',
+        title: 'บันทึกข้อมูลเรียบร้อย',
+        text: `บันทึกผลการตรวจห้อง ${selectedClass}/${selectedRoom} ลงระบบแล้ว`,
+        timer: 1300,
+        showConfirmButton: false
+      })
     }
-
-    Swal.fire({
-      icon: 'success',
-      title: 'ดำเนินการเรียบร้อย',
-      text: titleMap[targetStatus],
-      timer: 1200,
-      showConfirmButton: false
-    })
   }
 
   const handleLogout = async () => {
@@ -227,7 +208,7 @@ export default function TableInspectionPage() {
       </div>
 
       <main className="max-w-6xl mx-auto px-4 mt-4 space-y-4">
-        {/* 2. การ์ดแสดงห้อง + ดร็อปดาวน์จัดการยกห้อง */}
+        {/* 2. การ์ดแสดงห้อง + ดร็อปดาวน์ + ปุ่มบันทึกข้อมูล */}
         <div className="bg-white rounded-2xl p-4 shadow-sm border border-gray-100 flex flex-wrap items-center justify-between gap-4">
           <div className="flex items-center gap-2 text-gray-800 font-bold text-base md:text-lg">
             <Users className="w-5 h-5 text-blue-600" />
@@ -235,22 +216,25 @@ export default function TableInspectionPage() {
             <span className="text-sm font-normal text-gray-500">
               ({inspectedCount} / {students.length} คน)
             </span>
+            {hasUnsavedChanges && (
+              <span className="ml-2 text-xs bg-amber-100 text-amber-700 px-2.5 py-0.5 rounded-full font-bold animate-pulse">
+                • ยังไม่ได้บันทึก
+              </span>
+            )}
           </div>
 
           <div className="flex items-center gap-2">
-            {/* ดร็อปดาวน์ปุ่มจัดการทั้งหมดที่เหลือ */}
+            {/* ปุ่มดร็อปดาวน์เลือกเปลี่ยนสถานะยกห้อง (สลับไปมาได้ตลอดเวลา) */}
             <div className="relative" ref={dropdownRef}>
               <button
                 onClick={() => setShowBulkDropdown(!showBulkDropdown)}
                 disabled={saving || students.length === 0}
                 className="flex items-center gap-2 bg-[#16a34a] hover:bg-[#15803d] text-white px-4 py-2 rounded-xl text-sm font-bold shadow-sm transition active:scale-95 disabled:opacity-50"
               >
-                <CheckCircle2 className="w-4 h-4" />
                 <span>จัดการชุดข้อมูลห้อง</span>
                 <ChevronDown className={`w-4 h-4 transition-transform ${showBulkDropdown ? 'rotate-180' : ''}`} />
               </button>
 
-              {/* รายการตัวเลือกใน Dropdown */}
               {showBulkDropdown && (
                 <div className="absolute right-0 mt-2 w-56 bg-white rounded-xl shadow-xl border border-gray-100 py-1.5 z-30 animate-in fade-in zoom-in-95 duration-100">
                   <button
@@ -258,7 +242,7 @@ export default function TableInspectionPage() {
                     className="w-full text-left px-4 py-2.5 text-xs md:text-sm font-semibold text-emerald-700 hover:bg-emerald-50 flex items-center gap-2.5 transition"
                   >
                     <Check className="w-4 h-4 text-emerald-600 stroke-[3]" />
-                    <span>ให้ผ่านทั้งหมดที่เหลือ</span>
+                    <span>ผ่านทั้งหมด</span>
                   </button>
                   
                   <button
@@ -266,7 +250,7 @@ export default function TableInspectionPage() {
                     className="w-full text-left px-4 py-2.5 text-xs md:text-sm font-semibold text-rose-700 hover:bg-rose-50 flex items-center gap-2.5 transition"
                   >
                     <X className="w-4 h-4 text-rose-600 stroke-[3]" />
-                    <span>ให้ไม่ผ่านทั้งหมดที่เหลือ</span>
+                    <span>ไม่ผ่านทั้งหมด</span>
                   </button>
 
                   <button
@@ -274,22 +258,37 @@ export default function TableInspectionPage() {
                     className="w-full text-left px-4 py-2.5 text-xs md:text-sm font-semibold text-amber-700 hover:bg-amber-50 flex items-center gap-2.5 transition"
                   >
                     <UserX className="w-4 h-4 text-amber-600 stroke-[2.5]" />
-                    <span>ให้ขาดทั้งหมดที่เหลือ</span>
+                    <span>ขาดทั้งหมด</span>
                   </button>
 
                   <div className="border-t border-gray-100 my-1"></div>
 
                   <button
-                    onClick={() => handleBulkSetStatus('reset')}
+                    onClick={() => handleBulkSetStatus('pending')}
                     className="w-full text-left px-4 py-2.5 text-xs md:text-sm font-semibold text-gray-600 hover:bg-gray-100 flex items-center gap-2.5 transition"
                   >
                     <RotateCcw className="w-4 h-4 text-gray-500" />
-                    <span>รีเซ็ตเป็นรอตรวจทั้งหมด</span>
+                    <span>รอตรวจทั้งหมด</span>
                   </button>
                 </div>
               )}
             </div>
 
+            {/* ปุ่มบันทึกข้อมูลลงฐานข้อมูล */}
+            <button
+              onClick={handleSaveAll}
+              disabled={saving || students.length === 0}
+              className={`flex items-center gap-1.5 text-white px-4 py-2 rounded-xl text-sm font-bold shadow-md transition active:scale-95 disabled:opacity-50 ${
+                hasUnsavedChanges 
+                  ? 'bg-blue-600 hover:bg-blue-700 ring-4 ring-blue-300/50' 
+                  : 'bg-blue-600 hover:bg-blue-700'
+              }`}
+            >
+              <Save className="w-4 h-4" />
+              <span>{saving ? 'กำลังบันทึก...' : 'บันทึกข้อมูล'}</span>
+            </button>
+
+            {/* ปุ่มเปลี่ยนห้อง */}
             <button
               onClick={() => setShowRoomModal(true)}
               className="flex items-center gap-1.5 bg-gray-50 hover:bg-gray-100 text-gray-700 border border-gray-300 px-3.5 py-2 rounded-xl text-sm font-bold transition active:scale-95"
@@ -360,10 +359,9 @@ export default function TableInspectionPage() {
                           )}
                         </td>
 
-                        {/* ปุ่มจัดการ [ ✔ ] [ ✕ ] [ ⚠ ขาด ] [ 📷 AI ] */}
+                        {/* ปุ่มจัดการรายคน */}
                         <td className="py-3.5 px-6 text-center">
                           <div className="inline-flex items-center gap-1.5 bg-gray-100 p-1 rounded-xl border border-gray-200">
-                            {/* ปุ่มผ่าน (เขียว) */}
                             <button 
                               onClick={() => handleSetStatus(student.id, 'pass')} 
                               className={`p-1.5 rounded-lg transition ${status === 'pass' ? 'bg-[#16a34a] text-white shadow-sm' : 'bg-white text-[#16a34a] border border-gray-200 hover:bg-emerald-50'}`} 
@@ -372,7 +370,6 @@ export default function TableInspectionPage() {
                               <Check className="w-4 h-4 stroke-[3]" />
                             </button>
 
-                            {/* ปุ่มไม่ผ่าน (แดง) */}
                             <button 
                               onClick={() => handleSetStatus(student.id, 'fail')} 
                               className={`p-1.5 rounded-lg transition ${status === 'fail' ? 'bg-[#dc2626] text-white shadow-sm' : 'bg-white text-[#dc2626] border border-gray-200 hover:bg-rose-50'}`} 
@@ -381,16 +378,14 @@ export default function TableInspectionPage() {
                               <X className="w-4 h-4 stroke-[3]" />
                             </button>
 
-                            {/* ปุ่มขาด (ส้ม) */}
                             <button 
                               onClick={() => handleSetStatus(student.id, 'absent')} 
                               className={`p-1.5 rounded-lg transition ${status === 'absent' ? 'bg-[#d97706] text-white shadow-sm' : 'bg-white text-[#d97706] border border-gray-200 hover:bg-amber-50'}`} 
-                              title="ขาดเรียน / ไม่ได้ตรวจ"
+                              title="ขาดเรียน"
                             >
                               <UserX className="w-4 h-4 stroke-[2.5]" />
                             </button>
 
-                            {/* ปุ่ม AI (ดำ) */}
                             <button 
                               onClick={() => Swal.fire({ title: 'ระบบตรวจด้วย AI', text: `กำลังเตรียมเปิดกล้องสำหรับ ${student.full_name}`, icon: 'info' })} 
                               className="flex items-center gap-1 bg-black text-white px-2.5 py-1.5 rounded-lg text-xs font-bold hover:bg-gray-800 transition"
