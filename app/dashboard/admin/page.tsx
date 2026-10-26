@@ -162,7 +162,7 @@ export default function CompleteInspectionPage() {
     setLoading(false)
   }
 
-  // 🟢 ฟังก์ชันส่งออกเป็นไฟล์ Excel (.xlsx)
+  // ฟังก์ชันส่งออกไฟล์ Excel (.xlsx)
   const handleExportExcel = () => {
     if (students.length === 0) {
       Swal.fire('ไม่มีข้อมูล', 'ไม่พบรายชื่อนักเรียนสำหรับการส่งออก', 'info')
@@ -203,7 +203,6 @@ export default function CompleteInspectionPage() {
     const workbook = XLSX.utils.book_new()
     XLSX.utils.book_append_sheet(workbook, worksheet, `ผลตรวจ_${selectedClass}_${selectedRoom}`)
     
-    // ตั้งชื่อไฟล์ Excel
     const fileName = `ผลการตรวจระเบียบ_${selectedClass}_ห้อง${selectedRoom}_เดือน_${inspectionMonth}.xlsx`
     XLSX.writeFile(workbook, fileName)
   }
@@ -484,16 +483,6 @@ export default function CompleteInspectionPage() {
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
-            {/* 🟢 ปุ่มดาวน์โหลดไฟล์ Excel */}
-            <button
-              onClick={handleExportExcel}
-              disabled={loading || students.length === 0}
-              className="flex items-center gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white px-3.5 py-2 rounded-xl text-sm font-bold shadow-sm transition active:scale-95 disabled:opacity-50"
-            >
-              <Download className="w-4 h-4" />
-              <span>ส่งออก Excel</span>
-            </button>
-
             {/* ดร็อปดาวน์เปลี่ยนยกห้อง */}
             <div className="relative" ref={dropdownRef}>
               <button
@@ -564,6 +553,19 @@ export default function CompleteInspectionPage() {
               className="flex items-center gap-1.5 bg-gray-50 hover:bg-gray-100 text-gray-700 border border-gray-300 px-3.5 py-2 rounded-xl text-sm font-bold transition active:scale-95"
             >
               <ArrowLeft className="w-4 h-4" /> เปลี่ยนห้อง
+            </button>
+
+            {/* 🟢 เส้นแบ่งแนวตั้ง เพื่อคั่นแยกกลุ่มปุ่มส่งออกข้อมูล */}
+            <div className="h-6 w-[1px] bg-gray-300 mx-1 hidden sm:block" />
+
+            {/* 🟢 ปุ่มดาวน์โหลดไฟล์ Excel (จัดวางไว้ขวาสุด เด่นชัดเจน) */}
+            <button
+              onClick={handleExportExcel}
+              disabled={loading || students.length === 0}
+              className="flex items-center gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 rounded-xl text-sm font-bold shadow-md hover:shadow-lg transition active:scale-95 disabled:opacity-50 ring-2 ring-emerald-600/20"
+            >
+              <Download className="w-4 h-4" />
+              <span>ส่งออก Excel</span>
             </button>
           </div>
         </div>
