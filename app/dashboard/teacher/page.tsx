@@ -4,6 +4,7 @@ import { useState, useEffect, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/utils/supabase/client'
 import Swal from 'sweetalert2'
+import * as XLSX from 'xlsx'
 import { 
   ShieldCheck, 
   Users, 
@@ -17,12 +18,10 @@ import {
   ChevronDown,
   RotateCcw,
   Save,
-  Scissors,
-  Sparkles,
-  Shirt,
   BarChart3,
   RefreshCw,
-  Calendar
+  Calendar,
+  Download
 } from 'lucide-react'
 
 type StatusType = 'pass' | 'fail' | 'absent' | 'pending'
@@ -54,19 +53,16 @@ export default function CompleteInspectionPage() {
   const supabase = createClient()
   const router = useRouter()
 
-  // State สำหรับจัดการตารางและการเลือกห้อง
   const [selectedClass, setSelectedClass] = useState('ม.1')
   const [selectedRoom, setSelectedRoom] = useState(1)
   const [selectedCategory, setSelectedCategory] = useState<CategoryType>('all')
   const [showRoomModal, setShowRoomModal] = useState(false)
   const [showBulkDropdown, setShowBulkDropdown] = useState(false)
   
-  // State สำหรับรอบการตรวจและสถิติ
   const [academicYear, setAcademicYear] = useState('2569')
   const [semester, setSemester] = useState('2')
   const [inspectionMonth, setInspectionMonth] = useState(new Date().toISOString().slice(0, 7))
 
-  // State ข้อมูลนักเรียนและสถานะการตรวจ
   const [students, setStudents] = useState<Student[]>([])
   const [studentStatuses, setStudentStatuses] = useState<Record<string, StudentItemStatus>>({})
   const [inspectionMetas, setInspectionMetas] = useState<Record<string, InspectionMeta>>({})
@@ -80,7 +76,6 @@ export default function CompleteInspectionPage() {
   const classes = ['ม.1', 'ม.2', 'ม.3', 'ม.4', 'ม.5', 'ม.6']
   const rooms = Array.from({ length: 15 }, (_, i) => i + 1)
 
-  // ปิด Dropdown เมื่อคลิกข้างนอก
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
       if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
@@ -95,7 +90,6 @@ export default function CompleteInspectionPage() {
     fetchStudentsAndInspections()
   }, [selectedClass, selectedRoom, inspectionMonth])
 
-  // ดึงข้อมูลนักเรียนและประวัติการตรวจในรอบเดือน
   const fetchStudentsAndInspections = async () => {
     setLoading(true)
     setHasUnsavedChanges(false)
@@ -168,7 +162,52 @@ export default function CompleteInspectionPage() {
     setLoading(false)
   }
 
-  // ปรับสถานะเฉพาะรายการ (hair/nails/uniform) รายบุคคล
+  // 🟢 ฟังก์ชันส่งออกเป็นไฟล์ Excel (.xlsx)
+  const handleExportExcel = () => {
+    if (students.length === 0) {
+      Swal.fire('ไม่มีข้อมูล', 'ไม่พบรายชื่อนักเรียนสำหรับการส่งออก', 'info')
+      return
+    }
+
+    const formatTextStatus = (val: StatusType) => {
+      if (val === 'pass') return 'ผ่าน'
+      if (val === 'fail') return 'ไม่ผ่าน'
+      if (val === 'absent') return 'ขาด'
+      return 'รอตรวจ'
+    }
+
+    const excelRows = students.map((s, idx) => {
+      const st = studentStatuses[s.id] || { hair: 'pending', nails: 'pending', uniform: 'pending' }
+      const meta = inspectionMetas[s.id] || { attempt_number: 1, is_correction: false, failed_correction_count: 0 }
+
+      let overall: StatusType = 'pass'
+      if (st.hair === 'fail' || st.nails === 'fail' || st.uniform === 'fail') overall = 'fail'
+      else if (st.hair === 'absent' || st.nails === 'absent' || st.uniform === 'absent') overall = 'absent'
+      else if (st.hair === 'pending' || st.nails === 'pending' || st.uniform === 'pending') overall = 'pending'
+
+      return {
+        'เลขที่': s.number || idx + 1,
+        'รหัสนักเรียน': s.student_id || '',
+        'ชื่อ-นามสกุล': s.full_name,
+        'ชั้น/ห้อง': `${s.class_name}/${s.room}`,
+        'รอบการตรวจ': meta.is_correction ? `ตรวจแก้ไข (ครั้งที่ ${meta.attempt_number})` : 'ตรวจประจำเดือน',
+        'จำนวนครั้งที่ไม่ผ่านซ้ำ': meta.failed_correction_count,
+        'ทรงผม': formatTextStatus(st.hair),
+        'เล็บ': formatTextStatus(st.nails),
+        'การแต่งกาย': formatTextStatus(st.uniform),
+        'สรุปผลภาพรวม': formatTextStatus(overall)
+      }
+    })
+
+    const worksheet = XLSX.utils.json_to_sheet(excelRows)
+    const workbook = XLSX.utils.book_new()
+    XLSX.utils.book_append_sheet(workbook, worksheet, `ผลตรวจ_${selectedClass}_${selectedRoom}`)
+    
+    // ตั้งชื่อไฟล์ Excel
+    const fileName = `ผลการตรวจระเบียบ_${selectedClass}_ห้อง${selectedRoom}_เดือน_${inspectionMonth}.xlsx`
+    XLSX.writeFile(workbook, fileName)
+  }
+
   const handleSetItemStatus = (studentId: string, category: 'hair' | 'nails' | 'uniform', newStatus: StatusType) => {
     setStudentStatuses(prev => ({
       ...prev,
@@ -180,7 +219,6 @@ export default function CompleteInspectionPage() {
     setHasUnsavedChanges(true)
   }
 
-  // ปรับสถานะแบบดร็อปดาวน์ยกห้อง
   const handleBulkSetStatus = (targetStatus: StatusType) => {
     setShowBulkDropdown(false)
     const updated = { ...studentStatuses }
@@ -198,7 +236,6 @@ export default function CompleteInspectionPage() {
     setHasUnsavedChanges(true)
   }
 
-  // ฟังก์ชันกดยืนยันว่านักเรียนมาตรวจแก้ไขแล้ว แต่ "ยังไม่ผ่าน" (อัปเดต upsert constraint)
   const handleAddFailedCorrection = async (studentId: string, studentName: string) => {
     const meta = inspectionMetas[studentId] || { attempt_number: 1, is_correction: false, failed_correction_count: 0 }
     const nextAttempt = meta.attempt_number + 1
@@ -255,7 +292,6 @@ export default function CompleteInspectionPage() {
     }
   }
 
-  // บันทึกลงฐานข้อมูล Supabase (อัปเดต upsert constraint)
   const handleSaveAll = async () => {
     setSaving(true)
     const { data: { user } } = await supabase.auth.getUser()
@@ -403,7 +439,7 @@ export default function CompleteInspectionPage() {
       </div>
 
       <main className="max-w-6xl mx-auto px-4 mt-4 space-y-4">
-        {/* การ์ดจัดการห้อง + ตัวกรองรายการตรวจ */}
+        {/* การ์ดจัดการห้อง + ปุ่มการทำงาน */}
         <div className="bg-white rounded-2xl p-4 shadow-sm border border-gray-100 flex flex-wrap items-center justify-between gap-4">
           
           <div className="flex flex-wrap items-center gap-3">
@@ -415,7 +451,6 @@ export default function CompleteInspectionPage() {
               </span>
             </div>
 
-            {/* เลือกรอบประจำเดือน */}
             <div className="flex items-center gap-1.5 bg-gray-50 border border-gray-200 px-3 py-1.5 rounded-xl text-xs font-bold text-gray-700">
               <Calendar className="w-3.5 h-3.5 text-blue-600" />
               <span>รอบเดือน:</span>
@@ -427,7 +462,6 @@ export default function CompleteInspectionPage() {
               />
             </div>
 
-            {/* ดร็อปดาวน์เลือกรายการตรวจ */}
             <div className="relative">
               <select
                 value={selectedCategory}
@@ -449,7 +483,17 @@ export default function CompleteInspectionPage() {
             )}
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
+            {/* 🟢 ปุ่มดาวน์โหลดไฟล์ Excel */}
+            <button
+              onClick={handleExportExcel}
+              disabled={loading || students.length === 0}
+              className="flex items-center gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white px-3.5 py-2 rounded-xl text-sm font-bold shadow-sm transition active:scale-95 disabled:opacity-50"
+            >
+              <Download className="w-4 h-4" />
+              <span>ส่งออก Excel</span>
+            </button>
+
             {/* ดร็อปดาวน์เปลี่ยนยกห้อง */}
             <div className="relative" ref={dropdownRef}>
               <button
@@ -572,7 +616,6 @@ export default function CompleteInspectionPage() {
                           </div>
                         </td>
 
-                        {/* คอลัมน์รอบการตรวจ + ปุ่มกดบันทึกเพิ่มสถิติไม่ผ่านซ้ำ */}
                         <td className="py-3.5 px-4 text-center">
                           {meta.is_correction ? (
                             <div className="flex flex-col items-center gap-1.5">
@@ -596,7 +639,6 @@ export default function CompleteInspectionPage() {
                           )}
                         </td>
 
-                        {/* กรณีเลือก "ทุกรายการ (ภาพรวม)" */}
                         {selectedCategory === 'all' ? (
                           <>
                             <td className="py-3.5 px-4 text-center">{renderItemControl(student.id, 'hair')}</td>
@@ -613,7 +655,6 @@ export default function CompleteInspectionPage() {
                             </td>
                           </>
                         ) : (
-                          /* กรณีเลือกเฉพาะหัวข้อใดหัวข้อหนึ่ง */
                           <>
                             <td className="py-3.5 px-6 text-center">
                               {studentStatuses[student.id]?.[selectedCategory] === 'pass' && <span className="inline-block bg-[#16a34a] text-white text-xs px-3.5 py-1 rounded-lg font-bold shadow-sm">ผ่าน</span>}
