@@ -483,16 +483,16 @@ export default function CompleteInspectionPage() {
             )}
           </div>
 
-          {/* กลุ่มปุ่มจัดการห้อง (อยู่ฝั่งซ้ายของปุ่ม Export) */}
+          {/* กลุ่มปุ่มจัดการห้อง */}
           <div className="flex flex-wrap items-center gap-2">
-            {/* ดร็อปดาวน์เปลี่ยนยกห้อง */}
+            {/* ดร็อปดาวน์เปลี่ยนยกห้อง (ปรับเป็นข้อความ "เลือกการประเมิน") */}
             <div className="relative" ref={dropdownRef}>
               <button
                 onClick={() => setShowBulkDropdown(!showBulkDropdown)}
                 disabled={saving || students.length === 0}
                 className="flex items-center gap-2 bg-[#16a34a] hover:bg-[#15803d] text-white px-4 py-2 rounded-xl text-sm font-bold shadow-sm transition active:scale-95 disabled:opacity-50"
               >
-                <span>จัดการชุดข้อมูลห้อง</span>
+                <span>เลือกการประเมิน</span>
                 <ChevronDown className={`w-4 h-4 transition-transform ${showBulkDropdown ? 'rotate-180' : ''}`} />
               </button>
 
@@ -558,7 +558,7 @@ export default function CompleteInspectionPage() {
             </button>
           </div>
 
-          {/* 🟢 ปุ่มส่งออก Excel (ชิดกรอบขวาสุดด้วย ml-auto) */}
+          {/* ปุ่มส่งออก Excel (ชิดกรอบขวาสุดด้วย ml-auto) */}
           <button
             onClick={handleExportExcel}
             disabled={loading || students.length === 0}
