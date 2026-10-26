@@ -22,8 +22,7 @@ import {
   Shirt,
   BarChart3,
   RefreshCw,
-  Calendar,
-  AlertTriangle
+  Calendar
 } from 'lucide-react'
 
 type StatusType = 'pass' | 'fail' | 'absent' | 'pending'
@@ -51,7 +50,7 @@ interface Student {
   gender?: string
 }
 
-export default function TableInspectionPage() {
+export default function CompleteInspectionPage() {
   const supabase = createClient()
   const router = useRouter()
 
@@ -199,7 +198,7 @@ export default function TableInspectionPage() {
     setHasUnsavedChanges(true)
   }
 
-  // ฟังก์ชันกดยืนยันว่านักเรียนมาตรวจแก้ไขแล้ว แต่ "ยังไม่ผ่าน" (นับสถิติเพิ่ม +1)
+  // ฟังก์ชันกดยืนยันว่านักเรียนมาตรวจแก้ไขแล้ว แต่ "ยังไม่ผ่าน" (อัปเดต upsert constraint)
   const handleAddFailedCorrection = async (studentId: string, studentName: string) => {
     const meta = inspectionMetas[studentId] || { attempt_number: 1, is_correction: false, failed_correction_count: 0 }
     const nextAttempt = meta.attempt_number + 1
@@ -222,7 +221,7 @@ export default function TableInspectionPage() {
 
       const { error } = await supabase
         .from('inspections')
-        .insert({
+        .upsert({
           student_id: studentId,
           inspector_id: user?.id,
           teacher_id: user?.id,
@@ -237,7 +236,7 @@ export default function TableInspectionPage() {
           attempt_number: nextAttempt,
           is_correction: true,
           is_resolved: false
-        })
+        }, { onConflict: 'student_id, inspection_date, attempt_number' })
 
       setSaving(false)
 
@@ -256,7 +255,7 @@ export default function TableInspectionPage() {
     }
   }
 
-  // บันทึกลงฐานข้อมูล Supabase
+  // บันทึกลงฐานข้อมูล Supabase (อัปเดต upsert constraint)
   const handleSaveAll = async () => {
     setSaving(true)
     const { data: { user } } = await supabase.auth.getUser()
@@ -296,7 +295,7 @@ export default function TableInspectionPage() {
 
     const { error } = await supabase
       .from('inspections')
-      .upsert(payload, { onConflict: 'student_id, inspection_date' })
+      .upsert(payload, { onConflict: 'student_id, inspection_date, attempt_number' })
 
     setSaving(false)
 
