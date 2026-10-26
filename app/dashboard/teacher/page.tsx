@@ -29,11 +29,10 @@ interface Student {
   gender?: string
 }
 
-export default function StudentHairInspectionPage() {
+export default function TableInspectionPage() {
   const supabase = createClient()
   const router = useRouter()
 
-  // State
   const [selectedClass, setSelectedClass] = useState('ม.1')
   const [selectedRoom, setSelectedRoom] = useState(1)
   const [showRoomModal, setShowRoomModal] = useState(false)
@@ -49,12 +48,10 @@ export default function StudentHairInspectionPage() {
     fetchStudentsAndInspections()
   }, [selectedClass, selectedRoom])
 
-  // ดึงรายชื่อนักเรียนและประวัติการตรวจประจำวัน
   const fetchStudentsAndInspections = async () => {
     setLoading(true)
     const today = new Date().toISOString().split('T')[0]
 
-    // 1. ดึงรายชื่อนักเรียนตามชั้นและห้องที่เลือก
     const { data: studentData, error: studentError } = await supabase
       .from('profiles')
       .select('id, student_id, full_name, class_name, room, number, gender')
@@ -72,7 +69,6 @@ export default function StudentHairInspectionPage() {
     const list: Student[] = studentData || []
     setStudents(list)
 
-    // 2. ดึงสถานะการตรวจทรงผมวันนี้
     const studentIds = list.map(s => s.id)
     let currentStatuses: Record<string, StatusType> = {}
 
@@ -90,7 +86,6 @@ export default function StudentHairInspectionPage() {
       }
     }
 
-    // กำหนดสถานะตั้งต้นเป็น 'pending' สำหรับคนที่ยังไม่ตรวจ
     list.forEach(s => {
       if (!currentStatuses[s.id]) {
         currentStatuses[s.id] = 'pending'
@@ -101,10 +96,8 @@ export default function StudentHairInspectionPage() {
     setLoading(false)
   }
 
-  // ปรับสถานะตรวจรายบุคคล
   const handleSetStatus = async (studentId: string, newStatus: StatusType) => {
     setStatuses(prev => ({ ...prev, [studentId]: newStatus }))
-
     const { data: { user } } = await supabase.auth.getUser()
     const today = new Date().toISOString().split('T')[0]
 
@@ -120,7 +113,6 @@ export default function StudentHairInspectionPage() {
       }, { onConflict: 'student_id, inspection_date' })
   }
 
-  // ปุ่มกด: ให้ผ่านทั้งหมดที่เหลือ
   const handlePassAllRemaining = async () => {
     setSaving(true)
     const { data: { user } } = await supabase.auth.getUser()
@@ -168,7 +160,6 @@ export default function StudentHairInspectionPage() {
 
   return (
     <div className="min-h-screen bg-[#38bdf8]/20 pb-12 font-sans">
-      {/* 1. Header สีฟ้าด้านบน ตรงตามรูป 2 */}
       <div className="max-w-6xl mx-auto pt-4 px-4">
         <header className="bg-[#1d4ed8] text-white px-6 py-4 rounded-2xl shadow-lg flex justify-between items-center">
           <div className="flex items-center gap-3">
@@ -193,7 +184,6 @@ export default function StudentHairInspectionPage() {
       </div>
 
       <main className="max-w-6xl mx-auto px-4 mt-4 space-y-4">
-        {/* 2. การ์ดแสดงห้อง + ปุ่มการจัดการ */}
         <div className="bg-white rounded-2xl p-4 shadow-sm border border-gray-100 flex flex-wrap items-center justify-between gap-4">
           <div className="flex items-center gap-2 text-gray-800 font-bold text-base md:text-lg">
             <Users className="w-5 h-5 text-blue-600" />
@@ -221,7 +211,6 @@ export default function StudentHairInspectionPage() {
           </div>
         </div>
 
-        {/* 3. ตารางแสดงรายชื่อนักเรียน ตรงตามรูป 2 */}
         <div className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden">
           {loading ? (
             <div className="p-12 text-center text-gray-400">กำลังดึงข้อมูลรายชื่อนักเรียน...</div>
@@ -244,105 +233,28 @@ export default function StudentHairInspectionPage() {
                     const isEven = idx % 2 === 1
 
                     return (
-                      <tr 
-                        key={student.id} 
-                        className={`transition hover:bg-blue-50/40 ${isEven ? 'bg-gray-50/60' : 'bg-white'}`}
-                      >
-                        {/* เลขที่ */}
+                      <tr key={student.id} className={`transition hover:bg-blue-50/40 ${isEven ? 'bg-gray-50/60' : 'bg-white'}`}>
                         <td className="py-3.5 px-6 text-center font-bold text-gray-800">
                           {student.number || idx + 1}
                         </td>
-
-                        {/* ชื่อ-สกุล & รหัสนักเรียน */}
                         <td className="py-3.5 px-6">
                           <div className="font-bold text-gray-900 text-base">{student.full_name}</div>
                           <div className="text-xs text-gray-500 mt-0.5 font-medium">
                             {student.student_id || '-'} | {student.gender || (student.full_name.startsWith('เด็กหญิง') || student.full_name.startsWith('นางสาว') ? 'หญิง' : 'ชาย')}
                           </div>
                         </td>
-
-                        {/* สถานะ Badge */}
                         <td className="py-3.5 px-6 text-center">
-                          {status === 'pass' && (
-                            <span className="inline-block bg-[#16a34a] text-white text-xs px-3.5 py-1 rounded-lg font-bold shadow-sm">
-                              ผ่าน
-                            </span>
-                          )}
-                          {status === 'fail' && (
-                            <span className="inline-block bg-[#dc2626] text-white text-xs px-3.5 py-1 rounded-lg font-bold shadow-sm">
-                              ไม่ผ่าน
-                            </span>
-                          )}
-                          {status === 'waive' && (
-                            <span className="inline-block bg-[#d97706] text-white text-xs px-3.5 py-1 rounded-lg font-bold shadow-sm">
-                              ผ่อนปรน
-                            </span>
-                          )}
-                          {status === 'pending' && (
-                            <span className="inline-block bg-gray-200 text-gray-600 text-xs px-3.5 py-1 rounded-lg font-bold">
-                              รอตรวจ
-                            </span>
-                          )}
+                          {status === 'pass' && <span className="inline-block bg-[#16a34a] text-white text-xs px-3.5 py-1 rounded-lg font-bold shadow-sm">ผ่าน</span>}
+                          {status === 'fail' && <span className="inline-block bg-[#dc2626] text-white text-xs px-3.5 py-1 rounded-lg font-bold shadow-sm">ไม่ผ่าน</span>}
+                          {status === 'waive' && <span className="inline-block bg-[#d97706] text-white text-xs px-3.5 py-1 rounded-lg font-bold shadow-sm">ผ่อนปรน</span>}
+                          {status === 'pending' && <span className="inline-block bg-gray-200 text-gray-600 text-xs px-3.5 py-1 rounded-lg font-bold">รอตรวจ</span>}
                         </td>
-
-                        {/* กลุ่มปุ่มจัดการ [ ✔ ] [ ✕ ] [ ⚠ ] [ 📷 AI ] */}
                         <td className="py-3.5 px-6 text-center">
                           <div className="inline-flex items-center gap-1.5 bg-gray-100 p-1 rounded-xl border border-gray-200">
-                            {/* ปุ่มผ่าน (สีเขียว) */}
-                            <button
-                              onClick={() => handleSetStatus(student.id, 'pass')}
-                              className={`p-1.5 rounded-lg transition active:scale-90 ${
-                                status === 'pass' 
-                                  ? 'bg-[#16a34a] text-white shadow-sm' 
-                                  : 'bg-white text-[#16a34a] border border-gray-200 hover:bg-emerald-50'
-                              }`}
-                              title="ผ่าน"
-                            >
-                              <Check className="w-4 h-4 stroke-[3]" />
-                            </button>
-
-                            {/* ปุ่มไม่ผ่าน (สีแดง) */}
-                            <button
-                              onClick={() => handleSetStatus(student.id, 'fail')}
-                              className={`p-1.5 rounded-lg transition active:scale-90 ${
-                                status === 'fail' 
-                                  ? 'bg-[#dc2626] text-white shadow-sm' 
-                                  : 'bg-white text-[#dc2626] border border-gray-200 hover:bg-rose-50'
-                              }`}
-                              title="ไม่ผ่าน"
-                            >
-                              <X className="w-4 h-4 stroke-[3]" />
-                            </button>
-
-                            {/* ปุ่มผ่อนปรน/ตักเตือน (สีเหลือง) */}
-                            <button
-                              onClick={() => handleSetStatus(student.id, 'waive')}
-                              className={`p-1.5 rounded-lg transition active:scale-90 ${
-                                status === 'waive' 
-                                  ? 'bg-[#d97706] text-white shadow-sm' 
-                                  : 'bg-white text-[#d97706] border border-gray-200 hover:bg-amber-50'
-                              }`}
-                              title="ผ่อนปรน / ตักเตือน"
-                            >
-                              <AlertTriangle className="w-4 h-4 stroke-[2.5]" />
-                            </button>
-
-                            {/* ปุ่มสแกนกล้อง AI (สีดำ) */}
-                            <button
-                              onClick={() => {
-                                Swal.fire({
-                                  title: 'ระบบตรวจด้วย AI',
-                                  text: `กำลังเตรียมเปิดกล้องสำหรับ ${student.full_name}`,
-                                  icon: 'info',
-                                  confirmButtonColor: '#1d4ed8'
-                                })
-                              }}
-                              className="flex items-center gap-1 bg-black hover:bg-gray-800 text-white px-2.5 py-1.5 rounded-lg text-xs font-bold transition active:scale-95"
-                              title="ตรวจสแกนทรงผมด้วย AI"
-                            >
-                              <Camera className="w-3.5 h-3.5" />
-                              <span>AI</span>
-                            </button>
+                            <button onClick={() => handleSetStatus(student.id, 'pass')} className={`p-1.5 rounded-lg transition ${status === 'pass' ? 'bg-[#16a34a] text-white' : 'bg-white text-[#16a34a] border border-gray-200'}`} title="ผ่าน"><Check className="w-4 h-4 stroke-[3]" /></button>
+                            <button onClick={() => handleSetStatus(student.id, 'fail')} className={`p-1.5 rounded-lg transition ${status === 'fail' ? 'bg-[#dc2626] text-white' : 'bg-white text-[#dc2626] border border-gray-200'}`} title="ไม่ผ่าน"><X className="w-4 h-4 stroke-[3]" /></button>
+                            <button onClick={() => handleSetStatus(student.id, 'waive')} className={`p-1.5 rounded-lg transition ${status === 'waive' ? 'bg-[#d97706] text-white' : 'bg-white text-[#d97706] border border-gray-200'}`} title="ผ่อนปรน"><AlertTriangle className="w-4 h-4 stroke-[2.5]" /></button>
+                            <button onClick={() => Swal.fire({ title: 'ระบบตรวจด้วย AI', text: `กำลังเตรียมเปิดกล้องสำหรับ ${student.full_name}`, icon: 'info' })} className="flex items-center gap-1 bg-black text-white px-2.5 py-1.5 rounded-lg text-xs font-bold"><Camera className="w-3.5 h-3.5" /><span>AI</span></button>
                           </div>
                         </td>
                       </tr>
@@ -355,59 +267,30 @@ export default function StudentHairInspectionPage() {
         </div>
       </main>
 
-      {/* Modal สำหรับเลือกห้อง */}
       {showRoomModal && (
         <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4 backdrop-blur-sm">
           <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-xl space-y-5">
             <h3 className="text-lg font-bold text-gray-800 border-b pb-3">เลือกห้องเรียนที่ต้องการตรวจ</h3>
-            
             <div className="space-y-4">
               <div>
                 <label className="block text-xs font-semibold text-gray-500 mb-1.5">ระดับชั้น</label>
                 <div className="grid grid-cols-3 gap-2">
                   {classes.map(c => (
-                    <button
-                      key={c}
-                      onClick={() => setSelectedClass(c)}
-                      className={`py-2 text-sm font-semibold rounded-lg border transition ${
-                        selectedClass === c 
-                          ? 'bg-blue-600 text-white border-blue-600 shadow-sm' 
-                          : 'bg-gray-50 text-gray-700 border-gray-200 hover:bg-gray-100'
-                      }`}
-                    >
-                      {c}
-                    </button>
+                    <button key={c} onClick={() => setSelectedClass(c)} className={`py-2 text-sm font-semibold rounded-lg border ${selectedClass === c ? 'bg-blue-600 text-white' : 'bg-gray-50 text-gray-700'}`}>{c}</button>
                   ))}
                 </div>
               </div>
-
               <div>
                 <label className="block text-xs font-semibold text-gray-500 mb-1.5">ห้องเรียน</label>
                 <div className="grid grid-cols-5 gap-2 max-h-40 overflow-y-auto p-1">
                   {rooms.map(r => (
-                    <button
-                      key={r}
-                      onClick={() => setSelectedRoom(r)}
-                      className={`py-2 text-sm font-semibold rounded-lg border transition ${
-                        selectedRoom === r 
-                          ? 'bg-blue-600 text-white border-blue-600 shadow-sm' 
-                          : 'bg-gray-50 text-gray-700 border-gray-200 hover:bg-gray-100'
-                      }`}
-                    >
-                      {r}
-                    </button>
+                    <button key={r} onClick={() => setSelectedRoom(r)} className={`py-2 text-sm font-semibold rounded-lg border ${selectedRoom === r ? 'bg-blue-600 text-white' : 'bg-gray-50 text-gray-700'}`}>{r}</button>
                   ))}
                 </div>
               </div>
             </div>
-
             <div className="flex justify-end pt-2">
-              <button
-                onClick={() => setShowRoomModal(false)}
-                className="w-full bg-blue-600 hover:bg-blue-700 text-white py-2.5 rounded-xl text-sm font-bold shadow-md transition"
-              >
-                ตกลง
-              </button>
+              <button onClick={() => setShowRoomModal(false)} className="w-full bg-blue-600 text-white py-2.5 rounded-xl text-sm font-bold shadow-md">ตกลง</button>
             </div>
           </div>
         </div>
