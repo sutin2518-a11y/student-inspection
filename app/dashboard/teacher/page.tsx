@@ -61,7 +61,10 @@ export default function CompleteInspectionPage() {
   const [showRoomModal, setShowRoomModal] = useState(false)
   const [showBulkDropdown, setShowBulkDropdown] = useState(false)
   
-  // State สำหรับแถบย่อยอัจฉริยะบนมือถือ (Mobile Accordion)
+  // 🟢 State สำหรับเปิด-ปิดเมนูแฮมเบอร์เกอร์บนมือถือ
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false)
+  
+  // State สำหรับแถบย่อยอัจฉริยะการ์ดห้องบนมือถือ
   const [isMobileFilterOpen, setIsMobileFilterOpen] = useState(false)
 
   // State สำหรับรอบปีการศึกษาและเดือน
@@ -79,6 +82,7 @@ export default function CompleteInspectionPage() {
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false)
 
   const dropdownRef = useRef<HTMLDivElement>(null)
+  const mobileMenuRef = useRef<HTMLDivElement>(null)
 
   const classes = ['ม.1', 'ม.2', 'ม.3', 'ม.4', 'ม.5', 'ม.6']
   const rooms = Array.from({ length: 15 }, (_, i) => i + 1)
@@ -87,6 +91,9 @@ export default function CompleteInspectionPage() {
     const handleClickOutside = (event: MouseEvent) => {
       if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
         setShowBulkDropdown(false)
+      }
+      if (mobileMenuRef.current && !mobileMenuRef.current.contains(event.target as Node)) {
+        setIsMobileMenuOpen(false)
       }
     }
     document.addEventListener('mousedown', handleClickOutside)
@@ -172,6 +179,7 @@ export default function CompleteInspectionPage() {
 
   // ส่งออกเป็นไฟล์ Excel (.xlsx)
   const handleExportExcel = () => {
+    setIsMobileMenuOpen(false)
     if (students.length === 0) {
       Swal.fire('ไม่มีข้อมูล', 'ไม่พบรายชื่อนักเรียนสำหรับการส่งออก', 'info')
       return
@@ -226,7 +234,7 @@ export default function CompleteInspectionPage() {
     setHasUnsavedChanges(true)
   }
 
-  // ฟังก์ชันกดวนเปลี่ยนสถานะบนมือถือ (รอตรวจ -> ผ่าน -> ไม่ผ่าน -> ขาด -> ผ่าน)
+  // ฟังก์ชันกดวนเปลี่ยนสถานะบนมือถือ
   const handleCycleStatus = (studentId: string, category: 'hair' | 'nails' | 'uniform') => {
     const current = studentStatuses[studentId]?.[category] || 'pending'
     let next: StatusType = 'pass'
@@ -376,6 +384,7 @@ export default function CompleteInspectionPage() {
   }
 
   const handleLogout = async () => {
+    setIsMobileMenuOpen(false)
     await supabase.auth.signOut()
     router.push('/login')
   }
@@ -450,7 +459,7 @@ export default function CompleteInspectionPage() {
     <div className="min-h-screen bg-[#38bdf8]/20 pb-12 font-sans">
       {/* Header */}
       <div className="max-w-6xl mx-auto pt-4 px-4">
-        <header className="bg-[#1d4ed8] text-white px-6 py-4 rounded-2xl shadow-lg flex justify-between items-center">
+        <header className="bg-[#1d4ed8] text-white px-6 py-4 rounded-2xl shadow-lg flex justify-between items-center relative">
           <div className="flex items-center gap-3">
             <div className="bg-white/20 p-2 rounded-xl shrink-0">
               <ShieldCheck className="w-7 h-7 text-white" />
@@ -461,7 +470,8 @@ export default function CompleteInspectionPage() {
             </div>
           </div>
           
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2" ref={mobileMenuRef}>
+            {/* ปุ่มบน Desktop */}
             <button 
               onClick={() => router.push('/dashboard/admin/stats')}
               className="hidden md:flex items-center gap-1.5 bg-white/20 hover:bg-white/30 text-white px-3.5 py-1.5 rounded-lg text-sm font-bold transition"
@@ -476,9 +486,52 @@ export default function CompleteInspectionPage() {
               <LogOut size={16} /> ออกจากระบบ
             </button>
 
-            <button className="text-white hover:bg-white/10 p-2 rounded-lg transition">
+            {/* 🟢 ปุ่มแฮมเบอร์เกอร์ (กดเปิด-ปิดเมนูบนมือถือ) */}
+            <button 
+              onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
+              className="text-white hover:bg-white/10 p-2 rounded-lg transition active:scale-95 cursor-pointer"
+              aria-label="เปิดเมนูหลัก"
+            >
               <Menu className="w-6 h-6" />
             </button>
+
+            {/* 🟢 เมนูลอยบนมือถือ (Mobile Navigation Drawer) */}
+            {isMobileMenuOpen && (
+              <div className="absolute right-4 top-16 w-56 bg-white text-gray-800 rounded-2xl shadow-2xl border border-gray-100 py-2 z-50 animate-in fade-in zoom-in-95 duration-150">
+                <div className="px-4 py-2 border-b border-gray-100 font-extrabold text-xs text-blue-700 uppercase tracking-wider">
+                  เมนูหลัก
+                </div>
+
+                <button
+                  onClick={() => {
+                    setIsMobileMenuOpen(false)
+                    router.push('/dashboard/admin/stats')
+                  }}
+                  className="w-full text-left px-4 py-3 text-sm font-bold text-gray-700 hover:bg-blue-50 flex items-center gap-3 transition"
+                >
+                  <BarChart3 className="w-4 h-4 text-blue-600" />
+                  <span>สถิติสะสม</span>
+                </button>
+
+                <button
+                  onClick={handleExportExcel}
+                  className="w-full text-left px-4 py-3 text-sm font-bold text-emerald-700 hover:bg-emerald-50 flex items-center gap-3 transition"
+                >
+                  <Download className="w-4 h-4 text-emerald-600" />
+                  <span>ส่งออก Excel</span>
+                </button>
+
+                <div className="border-t border-gray-100 my-1"></div>
+
+                <button
+                  onClick={handleLogout}
+                  className="w-full text-left px-4 py-3 text-sm font-bold text-rose-600 hover:bg-rose-50 flex items-center gap-3 transition"
+                >
+                  <LogOut className="w-4 h-4 text-rose-600" />
+                  <span>ออกจากระบบ</span>
+                </button>
+              </div>
+            )}
           </div>
         </header>
       </div>
