@@ -306,14 +306,14 @@ export default function CompleteInspectionPage() {
     return st.hair !== 'pending' || st.nails !== 'pending' || st.uniform !== 'pending'
   }).length
 
-  // Render ปุ่มเลือกสถานะแบบ Compact (ตัดป้ายข้อความลอยด้านบนออก)
+  // Render ปุ่มเลือกสถานะแบบ Compact
   const renderItemControl = (studentId: string, catKey: 'hair' | 'nails' | 'uniform') => {
     const status = studentStatuses[studentId]?.[catKey] || 'pending'
 
     return (
       <div className="flex items-center justify-center py-0.5">
         
-        {/* บน Desktop: แสดงปุ่ม 3 ปุ่มแบบเรียบหรู (ไม่แสดง Badge ตัวหนังสือด้านบน) */}
+        {/* บน Desktop: แสดงปุ่ม 3 ปุ่มแบบเรียบหรู */}
         <div className="hidden md:flex items-center justify-center">
           <div className="inline-flex items-center gap-1 bg-gray-100 p-1 rounded-xl border border-gray-200">
             <button 
@@ -362,7 +362,7 @@ export default function CompleteInspectionPage() {
   }
 
   return (
-    <div className="min-h-screen bg-[#38bdf8]/20 pb-12 font-sans">
+    <div className="min-h-screen bg-[#38bdf8]/20 pb-32 font-sans">
       {/* Header */}
       <div className="max-w-6xl mx-auto pt-4 px-4">
         <header className="bg-[#1d4ed8] text-white px-6 py-4 rounded-2xl shadow-lg flex justify-between items-center relative">
@@ -454,22 +454,9 @@ export default function CompleteInspectionPage() {
                 {selectedClass}/{selectedRoom}
               </span>
               <span className="text-xs text-gray-500 truncate">({inspectedCount}/{students.length})</span>
-              
-              {hasUnsavedChanges && (
-                <span className="w-2 h-2 rounded-full bg-amber-500 animate-pulse shrink-0" title="ยังไม่ได้บันทึก" />
-              )}
             </div>
 
             <div className="flex items-center gap-1.5 shrink-0">
-              <button
-                onClick={handleSaveAll}
-                disabled={saving || students.length === 0}
-                className="bg-blue-600 hover:bg-blue-700 text-white px-3 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1 shadow-sm active:scale-95 disabled:opacity-50"
-              >
-                <Save className="w-3.5 h-3.5" />
-                <span>{saving ? '...' : 'บันทึก'}</span>
-              </button>
-
               <button
                 onClick={() => setIsMobileFilterOpen(!isMobileFilterOpen)}
                 className={`p-1.5 rounded-xl border text-xs font-bold transition flex items-center gap-1 ${
@@ -520,12 +507,6 @@ export default function CompleteInspectionPage() {
                 </select>
                 <ChevronDown className="w-4 h-4 text-blue-700 absolute right-2.5 top-2 pointer-events-none" />
               </div>
-
-              {hasUnsavedChanges && (
-                <span className="hidden md:inline-block text-xs bg-amber-100 text-amber-700 px-2.5 py-0.5 rounded-full font-bold animate-pulse">
-                  • ยังไม่ได้บันทึก
-                </span>
-              )}
             </div>
 
             <div className="flex flex-wrap items-center gap-2 mt-2 md:mt-0">
@@ -551,19 +532,6 @@ export default function CompleteInspectionPage() {
               </div>
 
               <button
-                onClick={handleSaveAll}
-                disabled={saving || students.length === 0}
-                className={`hidden md:flex items-center gap-1.5 text-white px-4 py-2 rounded-xl text-sm font-bold shadow-md transition active:scale-95 disabled:opacity-50 ${
-                  hasUnsavedChanges 
-                    ? 'bg-blue-600 hover:bg-blue-700 ring-4 ring-blue-300/50' 
-                    : 'bg-blue-600 hover:bg-blue-700'
-                }`}
-              >
-                <Save className="w-4 h-4" />
-                <span>{saving ? 'กำลังบันทึก...' : 'บันทึกข้อมูล'}</span>
-              </button>
-
-              <button
                 onClick={() => setShowRoomModal(true)}
                 className="flex-1 sm:flex-none flex items-center justify-center gap-1 bg-gray-50 hover:bg-gray-100 text-gray-700 border border-gray-300 px-3 py-1.5 md:px-3.5 md:py-2 rounded-xl text-xs md:text-sm font-bold transition active:scale-95"
               >
@@ -584,7 +552,7 @@ export default function CompleteInspectionPage() {
 
         </div>
 
-        {/* ตารางแสดงรายชื่อนักเรียน (กระชับ เคลียร์ ไม่เกะกะสายตา) */}
+        {/* ตารางแสดงรายชื่อนักเรียน */}
         <div className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden">
           {loading ? (
             <div className="p-12 text-center text-gray-400">กำลังดึงข้อมูลรายชื่อนักเรียน...</div>
@@ -697,6 +665,39 @@ export default function CompleteInspectionPage() {
           )}
         </div>
       </main>
+
+      {/* 🟢 แถบบันทึกข้อมูลลอยติดด้านล่างเสมอ (Sticky Floating Save Bar) */}
+      <div className="fixed bottom-4 inset-x-4 max-w-lg mx-auto z-40 transition-all">
+        <div className="bg-white/95 backdrop-blur-md px-5 py-3 rounded-2xl shadow-2xl border border-blue-100 flex items-center justify-between gap-3 ring-1 ring-black/5">
+          <div className="flex flex-col">
+            <span className="text-xs font-bold text-gray-600">
+              ห้อง {selectedClass}/{selectedRoom} ({inspectedCount}/{students.length} คน)
+            </span>
+            {hasUnsavedChanges ? (
+              <span className="text-[11px] font-extrabold text-amber-600 flex items-center gap-1 animate-pulse">
+                • มีข้อมูลใหม่ยังไม่ได้บันทึก
+              </span>
+            ) : (
+              <span className="text-[11px] font-semibold text-emerald-600">
+                ✓ บันทึกข้อมูลล่าสุดแล้ว
+              </span>
+            )}
+          </div>
+
+          <button
+            onClick={handleSaveAll}
+            disabled={saving || students.length === 0}
+            className={`flex items-center gap-2 px-5 py-2.5 rounded-xl text-xs md:text-sm font-extrabold text-white shadow-lg transition active:scale-95 disabled:opacity-50 cursor-pointer ${
+              hasUnsavedChanges 
+                ? 'bg-blue-600 hover:bg-blue-700 ring-4 ring-blue-300/50 animate-bounce' 
+                : 'bg-blue-600 hover:bg-blue-700'
+            }`}
+          >
+            <Save className="w-4 h-4" />
+            <span>{saving ? 'กำลังบันทึก...' : 'บันทึกข้อมูล'}</span>
+          </button>
+        </div>
+      </div>
 
       {/* Modal เลือกห้อง */}
       {showRoomModal && (
