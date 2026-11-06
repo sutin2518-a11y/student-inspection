@@ -306,41 +306,36 @@ export default function CompleteInspectionPage() {
     return st.hair !== 'pending' || st.nails !== 'pending' || st.uniform !== 'pending'
   }).length
 
-  // Render ปุ่มเลือกสถานะแบบ Responsive
+  // Render ปุ่มเลือกสถานะแบบ Compact (ตัดป้ายข้อความลอยด้านบนออก)
   const renderItemControl = (studentId: string, catKey: 'hair' | 'nails' | 'uniform') => {
     const status = studentStatuses[studentId]?.[catKey] || 'pending'
 
     return (
-      <div className="flex flex-col items-center justify-center py-1">
+      <div className="flex items-center justify-center py-0.5">
         
-        {/* บน Desktop: แสดง 3 ปุ่มแยก (ผ่าน/ไม่ผ่าน/ขาด) */}
-        <div className="hidden md:flex flex-col items-center gap-1.5">
-          {status === 'pass' && <span className="bg-[#16a34a] text-white text-[11px] px-2.5 py-0.5 rounded-md font-bold">ผ่าน</span>}
-          {status === 'fail' && <span className="bg-[#dc2626] text-white text-[11px] px-2.5 py-0.5 rounded-md font-bold">ไม่ผ่าน</span>}
-          {status === 'absent' && <span className="bg-[#d97706] text-white text-[11px] px-2.5 py-0.5 rounded-md font-bold">ขาด</span>}
-          {status === 'pending' && <span className="bg-gray-200 text-gray-600 text-[11px] px-2.5 py-0.5 rounded-md font-bold">รอตรวจ</span>}
-
-          <div className="inline-flex items-center gap-1 bg-gray-100 p-1 rounded-lg border border-gray-200">
+        {/* บน Desktop: แสดงปุ่ม 3 ปุ่มแบบเรียบหรู (ไม่แสดง Badge ตัวหนังสือด้านบน) */}
+        <div className="hidden md:flex items-center justify-center">
+          <div className="inline-flex items-center gap-1 bg-gray-100 p-1 rounded-xl border border-gray-200">
             <button 
               onClick={() => handleSetItemStatus(studentId, catKey, 'pass')} 
-              className={`p-1 rounded-md transition ${status === 'pass' ? 'bg-[#16a34a] text-white' : 'bg-white text-[#16a34a] border border-gray-200 hover:bg-emerald-50'}`}
+              className={`p-1.5 rounded-lg transition ${status === 'pass' ? 'bg-[#16a34a] text-white shadow-sm' : 'bg-white text-[#16a34a] border border-gray-200 hover:bg-emerald-50'}`}
               title="ผ่าน"
             >
-              <Check className="w-3.5 h-3.5 stroke-[3]" />
+              <Check className="w-4 h-4 stroke-[3]" />
             </button>
             <button 
               onClick={() => handleSetItemStatus(studentId, catKey, 'fail')} 
-              className={`p-1 rounded-md transition ${status === 'fail' ? 'bg-[#dc2626] text-white' : 'bg-white text-[#dc2626] border border-gray-200 hover:bg-rose-50'}`}
+              className={`p-1.5 rounded-lg transition ${status === 'fail' ? 'bg-[#dc2626] text-white shadow-sm' : 'bg-white text-[#dc2626] border border-gray-200 hover:bg-rose-50'}`}
               title="ไม่ผ่าน"
             >
-              <X className="w-3.5 h-3.5 stroke-[3]" />
+              <X className="w-4 h-4 stroke-[3]" />
             </button>
             <button 
               onClick={() => handleSetItemStatus(studentId, catKey, 'absent')} 
-              className={`p-1 rounded-md transition ${status === 'absent' ? 'bg-[#d97706] text-white' : 'bg-white text-[#d97706] border border-gray-200 hover:bg-amber-50'}`}
+              className={`p-1.5 rounded-lg transition ${status === 'absent' ? 'bg-[#d97706] text-white shadow-sm' : 'bg-white text-[#d97706] border border-gray-200 hover:bg-amber-50'}`}
               title="ขาดเรียน"
             >
-              <UserX className="w-3.5 h-3.5 stroke-[2.5]" />
+              <UserX className="w-4 h-4 stroke-[2.5]" />
             </button>
           </div>
         </div>
@@ -589,7 +584,7 @@ export default function CompleteInspectionPage() {
 
         </div>
 
-        {/* ตารางแสดงรายชื่อนักเรียน (ตัดคอลัมน์รอบการตรวจออกแล้ว) */}
+        {/* ตารางแสดงรายชื่อนักเรียน (กระชับ เคลียร์ ไม่เกะกะสายตา) */}
         <div className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden">
           {loading ? (
             <div className="p-12 text-center text-gray-400">กำลังดึงข้อมูลรายชื่อนักเรียน...</div>
@@ -600,20 +595,20 @@ export default function CompleteInspectionPage() {
               <table className="w-full text-left border-collapse">
                 <thead>
                   <tr className="bg-gray-50 text-gray-800 font-bold text-xs md:text-sm border-b border-gray-200">
-                    <th className="py-3 px-2 md:py-4 md:px-4 text-center w-12 md:w-16">เลขที่</th>
-                    <th className="py-3 px-3 md:py-4 md:px-4 min-w-[140px] md:min-w-[180px]">ชื่อ-สกุล</th>
+                    <th className="py-3 px-2 md:py-3.5 md:px-4 text-center w-12 md:w-16">เลขที่</th>
+                    <th className="py-3 px-3 md:py-3.5 md:px-4 min-w-[140px] md:min-w-[180px]">ชื่อ-สกุล</th>
                     
                     {selectedCategory === 'all' ? (
                       <>
-                        <th className="py-3 px-2 md:py-4 md:px-4 text-center min-w-[90px] md:min-w-[140px]">✂️ ทรงผม</th>
-                        <th className="py-3 px-2 md:py-4 md:px-4 text-center min-w-[90px] md:min-w-[140px]">✨ เล็บ</th>
-                        <th className="py-3 px-2 md:py-4 md:px-4 text-center min-w-[90px] md:min-w-[140px]">👔 การแต่งกาย</th>
-                        <th className="py-3 px-2 md:py-4 md:px-4 text-center w-16 md:w-24">AI</th>
+                        <th className="py-3 px-2 md:py-3.5 md:px-4 text-center min-w-[90px] md:min-w-[140px]">✂️ ทรงผม</th>
+                        <th className="py-3 px-2 md:py-3.5 md:px-4 text-center min-w-[90px] md:min-w-[140px]">✨ เล็บ</th>
+                        <th className="py-3 px-2 md:py-3.5 md:px-4 text-center min-w-[90px] md:min-w-[140px]">👔 การแต่งกาย</th>
+                        <th className="py-3 px-2 md:py-3.5 md:px-4 text-center w-16 md:w-24">AI</th>
                       </>
                     ) : (
                       <>
-                        <th className="py-3 px-4 md:py-4 md:px-6 text-center w-28 md:w-32">สถานะ</th>
-                        <th className="py-3 px-4 md:py-4 md:px-6 text-center w-40 md:w-60">จัดการ</th>
+                        <th className="py-3 px-4 md:py-3.5 md:px-6 text-center w-28 md:w-32">สถานะ</th>
+                        <th className="py-3 px-4 md:py-3.5 md:px-6 text-center w-40 md:w-60">จัดการ</th>
                       </>
                     )}
                   </tr>
@@ -624,11 +619,11 @@ export default function CompleteInspectionPage() {
 
                     return (
                       <tr key={student.id} className={`transition hover:bg-blue-50/40 ${isEven ? 'bg-gray-50/60' : 'bg-white'}`}>
-                        <td className="py-3 px-2 md:py-3.5 md:px-4 text-center font-bold text-gray-800">
+                        <td className="py-2.5 px-2 md:py-3 md:px-4 text-center font-bold text-gray-800">
                           {student.number || idx + 1}
                         </td>
 
-                        <td className="py-3 px-3 md:py-3.5 md:px-4">
+                        <td className="py-2.5 px-3 md:py-3 md:px-4">
                           <div className="font-bold text-gray-900 text-sm md:text-base">{student.full_name}</div>
                           <div className="text-[10px] md:text-xs text-gray-500 mt-0.5 font-medium">
                             {student.student_id || '-'} | {student.gender || (student.full_name.startsWith('เด็กหญิง') || student.full_name.startsWith('นางสาว') ? 'หญิง' : 'ชาย')}
@@ -637,10 +632,10 @@ export default function CompleteInspectionPage() {
 
                         {selectedCategory === 'all' ? (
                           <>
-                            <td className="py-3 px-2 md:py-3.5 md:px-4 text-center">{renderItemControl(student.id, 'hair')}</td>
-                            <td className="py-3 px-2 md:py-3.5 md:px-4 text-center">{renderItemControl(student.id, 'nails')}</td>
-                            <td className="py-3 px-2 md:py-3.5 md:px-4 text-center">{renderItemControl(student.id, 'uniform')}</td>
-                            <td className="py-3 px-2 md:py-3.5 md:px-4 text-center">
+                            <td className="py-2.5 px-2 md:py-3 md:px-4 text-center">{renderItemControl(student.id, 'hair')}</td>
+                            <td className="py-2.5 px-2 md:py-3 md:px-4 text-center">{renderItemControl(student.id, 'nails')}</td>
+                            <td className="py-2.5 px-2 md:py-3 md:px-4 text-center">{renderItemControl(student.id, 'uniform')}</td>
+                            <td className="py-2.5 px-2 md:py-3 md:px-4 text-center">
                               <button 
                                 onClick={() => Swal.fire({ title: 'ระบบตรวจด้วย AI', text: `กำลังเตรียมเปิดกล้องสำหรับ ${student.full_name}`, icon: 'info' })} 
                                 className="inline-flex items-center gap-1 bg-black text-white px-2 py-1 md:px-2.5 md:py-1.5 rounded-lg text-[10px] md:text-xs font-bold hover:bg-gray-800 transition"
@@ -652,14 +647,14 @@ export default function CompleteInspectionPage() {
                           </>
                         ) : (
                           <>
-                            <td className="py-3 px-4 md:py-3.5 md:px-6 text-center">
+                            <td className="py-2.5 px-4 md:py-3 md:px-6 text-center">
                               {studentStatuses[student.id]?.[selectedCategory] === 'pass' && <span className="inline-block bg-[#16a34a] text-white text-xs px-2.5 py-0.5 rounded-lg font-bold shadow-sm">ผ่าน</span>}
                               {studentStatuses[student.id]?.[selectedCategory] === 'fail' && <span className="inline-block bg-[#dc2626] text-white text-xs px-2.5 py-0.5 rounded-lg font-bold shadow-sm">ไม่ผ่าน</span>}
                               {studentStatuses[student.id]?.[selectedCategory] === 'absent' && <span className="inline-block bg-[#d97706] text-white text-xs px-2.5 py-0.5 rounded-lg font-bold shadow-sm">ขาด</span>}
                               {(!studentStatuses[student.id]?.[selectedCategory] || studentStatuses[student.id]?.[selectedCategory] === 'pending') && <span className="inline-block bg-gray-200 text-gray-600 text-xs px-2.5 py-0.5 rounded-lg font-bold">รอตรวจ</span>}
                             </td>
 
-                            <td className="py-3 px-4 md:py-3.5 md:px-6 text-center">
+                            <td className="py-2.5 px-4 md:py-3 md:px-6 text-center">
                               <div className="inline-flex items-center gap-1 bg-gray-100 p-1 rounded-xl border border-gray-200">
                                 <button 
                                   onClick={() => handleSetItemStatus(student.id, selectedCategory, 'pass')} 
