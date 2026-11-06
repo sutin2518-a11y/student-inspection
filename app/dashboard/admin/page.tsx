@@ -19,7 +19,6 @@ import {
   RotateCcw,
   Save,
   BarChart3,
-  RefreshCw,
   Calendar,
   Download,
   SlidersHorizontal
@@ -32,12 +31,6 @@ interface StudentItemStatus {
   hair: StatusType
   nails: StatusType
   uniform: StatusType
-}
-
-interface InspectionMeta {
-  attempt_number: number
-  is_correction: boolean
-  failed_correction_count: number
 }
 
 interface Student {
@@ -61,7 +54,7 @@ export default function CompleteInspectionPage() {
   const [showRoomModal, setShowRoomModal] = useState(false)
   const [showBulkDropdown, setShowBulkDropdown] = useState(false)
   
-  // 🟢 State สำหรับเปิด-ปิดเมนูแฮมเบอร์เกอร์บนมือถือ
+  // State สำหรับเปิด-ปิดเมนูแฮมเบอร์เกอร์บนมือถือ
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false)
   
   // State สำหรับแถบย่อยอัจฉริยะการ์ดห้องบนมือถือ
@@ -75,7 +68,6 @@ export default function CompleteInspectionPage() {
   // State ข้อมูลนักเรียน
   const [students, setStudents] = useState<Student[]>([])
   const [studentStatuses, setStudentStatuses] = useState<Record<string, StudentItemStatus>>({})
-  const [inspectionMetas, setInspectionMetas] = useState<Record<string, InspectionMeta>>({})
   
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
@@ -104,7 +96,7 @@ export default function CompleteInspectionPage() {
     fetchStudentsAndInspections()
   }, [selectedClass, selectedRoom, inspectionMonth])
 
-  // ดึงข้อมูลรายชื่อนักเรียนและประวัติผลการตรวจ
+  // ดึงข้อมูลรายชื่อนักเรียนและประวัติผลการตรวจประจำเดือน
   const fetchStudentsAndInspections = async () => {
     setLoading(true)
     setHasUnsavedChanges(false)
@@ -128,35 +120,24 @@ export default function CompleteInspectionPage() {
 
     const studentIds = list.map(s => s.id)
     let currentStatuses: Record<string, StudentItemStatus> = {}
-    let currentMetas: Record<string, InspectionMeta> = {}
 
     if (studentIds.length > 0) {
       const { data: inspectionData } = await supabase
         .from('inspections')
-        .select('student_id, hair_status, nails_status, uniform_status, status, attempt_number, is_correction')
+        .select('student_id, hair_status, nails_status, uniform_status, status')
         .in('student_id', studentIds)
         .eq('inspection_month', inspectionMonth)
-        .order('attempt_number', { ascending: false })
 
       if (inspectionData) {
         studentIds.forEach(id => {
-          const studentRecords = inspectionData.filter(item => item.student_id === id)
-          if (studentRecords.length > 0) {
-            const latest = studentRecords[0]
+          const studentRecord = inspectionData.find(item => item.student_id === id)
+          if (studentRecord) {
             const normalize = (st?: string) => (st === 'waive' ? 'absent' : st || 'pending') as StatusType
 
             currentStatuses[id] = {
-              hair: normalize(latest.hair_status),
-              nails: normalize(latest.nails_status),
-              uniform: normalize(latest.uniform_status)
-            }
-
-            const failedCorrections = studentRecords.filter(r => r.is_correction && (r.status === 'fail' || r.status === 'absent')).length
-
-            currentMetas[id] = {
-              attempt_number: latest.attempt_number || 1,
-              is_correction: latest.is_correction || (latest.status === 'fail' || latest.status === 'absent'),
-              failed_correction_count: failedCorrections
+              hair: normalize(studentRecord.hair_status),
+              nails: normalize(studentRecord.nails_status),
+              uniform: normalize(studentRecord.uniform_status)
             }
           }
         })
@@ -167,13 +148,9 @@ export default function CompleteInspectionPage() {
       if (!currentStatuses[s.id]) {
         currentStatuses[s.id] = { hair: 'pending', nails: 'pending', uniform: 'pending' }
       }
-      if (!currentMetas[s.id]) {
-        currentMetas[s.id] = { attempt_number: 1, is_correction: false, failed_correction_count: 0 }
-      }
     })
 
     setStudentStatuses(currentStatuses)
-    setInspectionMetas(currentMetas)
     setLoading(false)
   }
 
@@ -194,7 +171,6 @@ export default function CompleteInspectionPage() {
 
     const excelRows = students.map((s, idx) => {
       const st = studentStatuses[s.id] || { hair: 'pending', nails: 'pending', uniform: 'pending' }
-      const meta = inspectionMetas[s.id] || { attempt_number: 1, is_correction: false, failed_correction_count: 0 }
 
       let overall: StatusType = 'pass'
       if (st.hair === 'fail' || st.nails === 'fail' || st.uniform === 'fail') overall = 'fail'
@@ -206,8 +182,6 @@ export default function CompleteInspectionPage() {
         'รหัสนักเรียน': s.student_id || '',
         'ชื่อ-นามสกุล': s.full_name,
         'ชั้น/ห้อง': `${s.class_name}/${s.room}`,
-        'รอบการตรวจ': meta.is_correction ? `ตรวจแก้ไข (ครั้งที่ ${meta.attempt_number})` : 'ตรวจประจำเดือน',
-        'จำนวนครั้งที่ไม่ผ่านซ้ำ': meta.failed_correction_count,
         'ทรงผม': formatTextStatus(st.hair),
         'เล็บ': formatTextStatus(st.nails),
         'การแต่งกาย': formatTextStatus(st.uniform),
@@ -264,62 +238,6 @@ export default function CompleteInspectionPage() {
     setHasUnsavedChanges(true)
   }
 
-  const handleAddFailedCorrection = async (studentId: string, studentName: string) => {
-    const meta = inspectionMetas[studentId] || { attempt_number: 1, is_correction: false, failed_correction_count: 0 }
-    const nextAttempt = meta.attempt_number + 1
-
-    const result = await Swal.fire({
-      title: 'ยืนยันตรวจแก้ไขไม่ผ่าน',
-      text: `ต้องการบันทึกว่า "${studentName}" ตรวจแก้ไขแล้วยังไม่ผ่าน (ครั้งที่ ${nextAttempt}) ใช่หรือไม่?`,
-      icon: 'warning',
-      showCancelButton: true,
-      confirmButtonColor: '#dc2626',
-      cancelButtonColor: '#6b7280',
-      confirmButtonText: 'ใช่, บันทึกไม่ผ่าน',
-      cancelButtonText: 'ยกเลิก'
-    })
-
-    if (result.isConfirmed) {
-      setSaving(true)
-      const { data: { user } } = await supabase.auth.getUser()
-      const today = new Date().toISOString().split('T')[0]
-
-      const { error } = await supabase
-        .from('inspections')
-        .upsert({
-          student_id: studentId,
-          inspector_id: user?.id,
-          teacher_id: user?.id,
-          status: 'fail',
-          hair_status: 'fail',
-          nails_status: 'fail',
-          uniform_status: 'fail',
-          inspection_date: today,
-          inspection_month: inspectionMonth,
-          academic_year: academicYear,
-          semester: semester,
-          attempt_number: nextAttempt,
-          is_correction: true,
-          is_resolved: false
-        }, { onConflict: 'student_id, inspection_date, attempt_number' })
-
-      setSaving(false)
-
-      if (error) {
-        Swal.fire('เกิดข้อผิดพลาด', error.message, 'error')
-      } else {
-        Swal.fire({
-          icon: 'success',
-          title: 'บันทึกสถิติสำเร็จ',
-          text: `เพิ่มสถิติตรวจแก้ไขไม่ผ่านของ ${studentName} เป็นครั้งที่ ${nextAttempt} แล้ว`,
-          timer: 1200,
-          showConfirmButton: false
-        })
-        fetchStudentsAndInspections()
-      }
-    }
-  }
-
   const handleSaveAll = async () => {
     setSaving(true)
     const { data: { user } } = await supabase.auth.getUser()
@@ -329,15 +247,11 @@ export default function CompleteInspectionPage() {
 
     const payload = students.map(s => {
       const st = studentStatuses[s.id] || { hair: 'pending', nails: 'pending', uniform: 'pending' }
-      const meta = inspectionMetas[s.id] || { attempt_number: 1, is_correction: false, failed_correction_count: 0 }
       
       let overall: StatusType = 'pass'
       if (st.hair === 'fail' || st.nails === 'fail' || st.uniform === 'fail') overall = 'fail'
       else if (st.hair === 'absent' || st.nails === 'absent' || st.uniform === 'absent') overall = 'absent'
       else if (st.hair === 'pending' || st.nails === 'pending' || st.uniform === 'pending') overall = 'pending'
-
-      const isCorrectionCheck = meta.is_correction || overall === 'fail' || overall === 'absent'
-      const newAttemptNumber = isCorrectionCheck && overall === 'pass' ? meta.attempt_number + 1 : meta.attempt_number
 
       return {
         student_id: s.id,
@@ -350,16 +264,13 @@ export default function CompleteInspectionPage() {
         inspection_date: today,
         inspection_month: inspectionMonth,
         academic_year: academicYear,
-        semester: semester,
-        attempt_number: newAttemptNumber,
-        is_correction: isCorrectionCheck,
-        is_resolved: isCorrectionCheck && overall === 'pass'
+        semester: semester
       }
     })
 
     const { error } = await supabase
       .from('inspections')
-      .upsert(payload, { onConflict: 'student_id, inspection_date, attempt_number' })
+      .upsert(payload, { onConflict: 'student_id, inspection_date' })
 
     setSaving(false)
 
@@ -471,7 +382,6 @@ export default function CompleteInspectionPage() {
           </div>
           
           <div className="flex items-center gap-2" ref={mobileMenuRef}>
-            {/* ปุ่มบน Desktop */}
             <button 
               onClick={() => router.push('/dashboard/admin/stats')}
               className="hidden md:flex items-center gap-1.5 bg-white/20 hover:bg-white/30 text-white px-3.5 py-1.5 rounded-lg text-sm font-bold transition"
@@ -486,7 +396,7 @@ export default function CompleteInspectionPage() {
               <LogOut size={16} /> ออกจากระบบ
             </button>
 
-            {/* 🟢 ปุ่มแฮมเบอร์เกอร์ (กดเปิด-ปิดเมนูบนมือถือ) */}
+            {/* ปุ่มแฮมเบอร์เกอร์บนมือถือ */}
             <button 
               onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
               className="text-white hover:bg-white/10 p-2 rounded-lg transition active:scale-95 cursor-pointer"
@@ -495,7 +405,7 @@ export default function CompleteInspectionPage() {
               <Menu className="w-6 h-6" />
             </button>
 
-            {/* 🟢 เมนูลอยบนมือถือ (Mobile Navigation Drawer) */}
+            {/* เมนูลอยบนมือถือ (Mobile Drawer) */}
             {isMobileMenuOpen && (
               <div className="absolute right-4 top-16 w-56 bg-white text-gray-800 rounded-2xl shadow-2xl border border-gray-100 py-2 z-50 animate-in fade-in zoom-in-95 duration-150">
                 <div className="px-4 py-2 border-b border-gray-100 font-extrabold text-xs text-blue-700 uppercase tracking-wider">
@@ -679,7 +589,7 @@ export default function CompleteInspectionPage() {
 
         </div>
 
-        {/* ตารางแสดงรายชื่อนักเรียน */}
+        {/* ตารางแสดงรายชื่อนักเรียน (ตัดคอลัมน์รอบการตรวจออกแล้ว) */}
         <div className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden">
           {loading ? (
             <div className="p-12 text-center text-gray-400">กำลังดึงข้อมูลรายชื่อนักเรียน...</div>
@@ -692,7 +602,6 @@ export default function CompleteInspectionPage() {
                   <tr className="bg-gray-50 text-gray-800 font-bold text-xs md:text-sm border-b border-gray-200">
                     <th className="py-3 px-2 md:py-4 md:px-4 text-center w-12 md:w-16">เลขที่</th>
                     <th className="py-3 px-3 md:py-4 md:px-4 min-w-[140px] md:min-w-[180px]">ชื่อ-สกุล</th>
-                    <th className="py-3 px-2 md:py-4 md:px-4 text-center w-32 md:w-40">รอบการตรวจ</th>
                     
                     {selectedCategory === 'all' ? (
                       <>
@@ -712,7 +621,6 @@ export default function CompleteInspectionPage() {
                 <tbody className="divide-y divide-gray-100 text-xs md:text-sm">
                   {students.map((student, idx) => {
                     const isEven = idx % 2 === 1
-                    const meta = inspectionMetas[student.id] || { attempt_number: 1, is_correction: false, failed_correction_count: 0 }
 
                     return (
                       <tr key={student.id} className={`transition hover:bg-blue-50/40 ${isEven ? 'bg-gray-50/60' : 'bg-white'}`}>
@@ -725,29 +633,6 @@ export default function CompleteInspectionPage() {
                           <div className="text-[10px] md:text-xs text-gray-500 mt-0.5 font-medium">
                             {student.student_id || '-'} | {student.gender || (student.full_name.startsWith('เด็กหญิง') || student.full_name.startsWith('นางสาว') ? 'หญิง' : 'ชาย')}
                           </div>
-                        </td>
-
-                        <td className="py-3 px-2 md:py-3.5 md:px-4 text-center">
-                          {meta.is_correction ? (
-                            <div className="flex flex-col items-center gap-1.5">
-                              <span className="bg-amber-100 text-amber-800 text-[10px] md:text-[11px] px-2 py-0.5 rounded-md font-bold flex items-center gap-1">
-                                <RefreshCw className="w-3 h-3 text-amber-700" />
-                                ตรวจแก้ไข ({meta.attempt_number})
-                              </span>
-                              
-                              <button
-                                onClick={() => handleAddFailedCorrection(student.id, student.full_name)}
-                                className="bg-rose-50 hover:bg-rose-100 text-rose-700 hover:text-rose-800 text-[9px] md:text-[10px] px-2 py-0.5 rounded-full font-extrabold border border-rose-300 shadow-sm transition active:scale-95 flex items-center gap-1 cursor-pointer"
-                                title="กดเพื่อบันทึกว่ามาตรวจแก้ไขแล้วแต่ยังไม่ผ่าน"
-                              >
-                                <span>⚠️ ไม่ผ่านซ้ำ (+1 แก้ไข)</span>
-                              </button>
-                            </div>
-                          ) : (
-                            <span className="inline-block bg-blue-50 text-blue-700 text-[10px] md:text-[11px] px-2 py-0.5 rounded-md font-bold">
-                              ประจำเดือน
-                            </span>
-                          )}
                         </td>
 
                         {selectedCategory === 'all' ? (
