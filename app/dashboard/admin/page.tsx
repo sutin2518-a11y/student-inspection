@@ -483,10 +483,9 @@ export default function CompleteInspectionPage() {
                 </span>
               </div>
 
-              <div className="relative flex items-center gap-1.5 bg-gray-50 border border-gray-200 px-3 py-1.5 rounded-xl text-xs font-bold text-gray-700 w-full sm:w-auto overflow-hidden">
+  <div className="relative flex items-center gap-1.5 bg-gray-50 border border-gray-200 px-3 py-1.5 rounded-xl text-xs font-bold text-gray-700 w-full sm:w-auto overflow-hidden">
   <Calendar className="w-3.5 h-3.5 text-blue-600 shrink-0" />
   
-  {/* แสดงชื่อเดือนเป็นภาษาไทย */}
   <span className="text-blue-800 shrink-0 pointer-events-none">
     {new Date(inspectionMonth + '-01').toLocaleDateString('th-TH', { 
       month: 'long', 
@@ -498,10 +497,15 @@ export default function CompleteInspectionPage() {
     type="month"
     value={inspectionMonth}
     onChange={(e) => setInspectionMonth(e.target.value)}
+    onClick={(e) => {
+      // บังคับเปิดหน้าต่างเลือกเดือนเมื่อคลิก
+      if ('showPicker' in HTMLInputElement.prototype) {
+        e.currentTarget.showPicker();
+      }
+    }}
     className="absolute inset-0 opacity-0 cursor-pointer w-full h-full"
   />
 </div>
-
               <div className="relative w-full sm:w-auto">
                 <select
                   value={selectedCategory}
