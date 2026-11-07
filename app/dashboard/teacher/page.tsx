@@ -28,6 +28,7 @@ type StatusType = 'pass' | 'fail' | 'absent' | 'pending'
 type CategoryType = 'all' | 'hair' | 'nails' | 'uniform'
 
 interface StudentItemStatus {
+  inspection_id?: string // เพิ่ม field สำหรับเก็บ ID ของตาราง inspections
   hair: StatusType
   nails: StatusType
   uniform: StatusType
@@ -124,7 +125,7 @@ export default function CompleteInspectionPage() {
     if (studentIds.length > 0) {
       const { data: inspectionData } = await supabase
         .from('inspections')
-        .select('student_id, hair_status, nails_status, uniform_status, status')
+        .select('id, student_id, hair_status, nails_status, uniform_status, status') // ดึง id ของ inspections มาด้วย
         .in('student_id', studentIds)
         .eq('inspection_month', inspectionMonth)
 
@@ -135,6 +136,7 @@ export default function CompleteInspectionPage() {
             const normalize = (st?: string) => (st === 'waive' ? 'absent' : st || 'pending') as StatusType
 
             currentStatuses[id] = {
+              inspection_id: studentRecord.id, // เก็บ ID ไว้เพื่อใช้อัปเดต
               hair: normalize(studentRecord.hair_status),
               nails: normalize(studentRecord.nails_status),
               uniform: normalize(studentRecord.uniform_status)
@@ -228,7 +230,8 @@ export default function CompleteInspectionPage() {
     students.forEach(s => {
       const current = updated[s.id] || { hair: 'pending', nails: 'pending', uniform: 'pending' }
       if (selectedCategory === 'all') {
-        updated[s.id] = { hair: targetStatus, nails: targetStatus, uniform: targetStatus }
+        // รักษา inspection_id เอาไว้เวลาเปลี่ยนสถานะรวดเดียว
+        updated[s.id] = { ...current, hair: targetStatus, nails: targetStatus, uniform: targetStatus }
       } else {
         updated[s.id] = { ...current, [selectedCategory]: targetStatus }
       }
@@ -253,7 +256,8 @@ export default function CompleteInspectionPage() {
       else if (st.hair === 'absent' || st.nails === 'absent' || st.uniform === 'absent') overall = 'absent'
       else if (st.hair === 'pending' || st.nails === 'pending' || st.uniform === 'pending') overall = 'pending'
 
-      return {
+      // สร้าง record สำหรับอัปเดต
+      const record: any = {
         student_id: s.id,
         inspector_id: user?.id,
         teacher_id: user?.id,
@@ -266,11 +270,19 @@ export default function CompleteInspectionPage() {
         academic_year: academicYear,
         semester: semester
       }
+
+      // ถ้ามี ID เดิมจากฐานข้อมูล ให้แนบ ID กลับไปเพื่อบอกให้ Supabase อัปเดตทับข้อมูลเดิม
+      if (st.inspection_id) {
+        record.id = st.inspection_id
+      }
+
+      return record
     })
 
+    // ลบ { onConflict: ... } ออก เพื่อใช้ระบบอัปเดตอัตโนมัติตาม Primary Key ของ Supabase
     const { error } = await supabase
       .from('inspections')
-      .upsert(payload, { onConflict: 'student_id, inspection_date' })
+      .upsert(payload)
 
     setSaving(false)
 
@@ -486,7 +498,6 @@ export default function CompleteInspectionPage() {
   <div 
   className="flex items-center gap-1.5 bg-gray-50 border border-gray-200 px-3 py-1.5 rounded-xl text-xs font-bold text-gray-700 w-full sm:w-auto cursor-pointer hover:bg-gray-100 transition-colors"
   onClick={(e) => {
-    // ดึงตัว input ที่ซ่อนอยู่มาบังคับเปิดปฏิทิน
     const input = e.currentTarget.querySelector('input');
     if (input && 'showPicker' in input) {
       input.showPicker();
@@ -509,7 +520,6 @@ export default function CompleteInspectionPage() {
     className="w-0 h-0 opacity-0 pointer-events-none absolute"
   />
 </div>
-
               <div className="relative w-full sm:w-auto">
                 <select
                   value={selectedCategory}
