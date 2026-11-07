@@ -148,32 +148,33 @@ export default function StatsPage() {
             </div>
           </div>
 
-    <div 
-  className="flex items-center gap-1.5 bg-gray-50 border border-gray-200 px-3 py-1.5 rounded-xl text-xs font-bold text-gray-700 w-full sm:w-auto cursor-pointer hover:bg-gray-100 transition-colors"
-  onClick={(e) => {
-    // ดึงตัว input ที่ซ่อนอยู่มาบังคับเปิดปฏิทิน
-    const input = e.currentTarget.querySelector('input');
-    if (input && 'showPicker' in input) {
-      input.showPicker();
-    }
-  }}
->
-  <Calendar className="w-3.5 h-3.5 text-blue-600 shrink-0" />
-  
-  <span className="text-blue-800 shrink-0 select-none">
-    {new Date(inspectionMonth + '-01').toLocaleDateString('th-TH', { 
-      month: 'long', 
-      year: 'numeric' 
-    })}
-  </span>
+          {/* เพิ่ม div นี้กลับมาเพื่อครอบตัวกรองด้านขวาให้อยู่กลุ่มเดียวกัน */}
+          <div className="flex flex-wrap items-center gap-2 w-full md:w-auto">
+            <div 
+              className="flex items-center gap-1.5 bg-gray-50 border border-gray-200 px-3 py-1.5 rounded-xl text-xs font-bold text-gray-700 w-full sm:w-auto cursor-pointer hover:bg-gray-100 transition-colors"
+              onClick={(e) => {
+                const input = e.currentTarget.querySelector('input');
+                if (input && 'showPicker' in input) {
+                  input.showPicker();
+                }
+              }}
+            >
+              <Calendar className="w-3.5 h-3.5 text-blue-600 shrink-0" />
+              
+              <span className="text-blue-800 shrink-0 select-none">
+                {new Date(inspectionMonth + '-01').toLocaleDateString('th-TH', { 
+                  month: 'long', 
+                  year: 'numeric' 
+                })}
+              </span>
 
-  <input
-    type="month"
-    value={inspectionMonth}
-    onChange={(e) => setInspectionMonth(e.target.value)}
-    className="w-0 h-0 opacity-0 pointer-events-none absolute"
-  />
-</div>
+              <input
+                type="month"
+                value={inspectionMonth}
+                onChange={(e) => setInspectionMonth(e.target.value)}
+                className="w-0 h-0 opacity-0 pointer-events-none absolute"
+              />
+            </div>
             
             <select value={academicYear} onChange={(e) => setAcademicYear(e.target.value)} className="bg-white border border-gray-200 px-3 py-2 rounded-xl text-xs font-bold text-gray-700 outline-none">
               <option value="2569">ปีการศึกษา 2569</option>
