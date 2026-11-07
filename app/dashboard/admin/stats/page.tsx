@@ -78,7 +78,6 @@ export default function DashboardStatsPage() {
     setLoading(false)
   }
 
-  // ดึงสถานะแยกตามประเภทที่เลือก
   const getStudentStatus = (studentId: string) => {
     const record = inspections[studentId]
     if (!record) return 'pending'
@@ -114,7 +113,7 @@ export default function DashboardStatsPage() {
     { name: 'รอตรวจ', value: totalPending, color: '#e5e7eb' },
   ]
 
-  // --- ข้อมูลกราฟแท่ง (แยก ม.1 - ม.6) ---
+  // --- ข้อมูลกราฟแท่ง (แยก ม.1 - ม.6) ซ้อนสถานะและแสดงตัวเลข ---
   const classesList = ['ม.1', 'ม.2', 'ม.3', 'ม.4', 'ม.5', 'ม.6']
   const barChartData = classesList.map(c => {
     const classStudents = students.filter(s => s.class_name === c)
@@ -137,7 +136,6 @@ export default function DashboardStatsPage() {
     }
   })
 
-  // --- ข้อมูลตาราง (แยกรายห้อง) ---
   const classrooms: Record<string, { total: number, pass: number, fail: number, absent: number, pending: number }> = {}
   
   students.forEach(s => {
@@ -187,7 +185,6 @@ export default function DashboardStatsPage() {
     <div className="min-h-screen bg-[#38bdf8]/20 p-4 md:p-8 font-sans">
       <div className="max-w-7xl mx-auto space-y-6">
         
-        {/* Header Section */}
         <div className="bg-white rounded-2xl p-4 shadow-sm border border-gray-100 flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div className="flex items-center gap-2">
             <PieChartIcon className="w-6 h-6 text-blue-600" />
@@ -222,7 +219,6 @@ export default function DashboardStatsPage() {
           </div>
         </div>
 
-        {/* Top Summary Cards (ผ่าน, ไม่ผ่าน, ขาด, รอตรวจ) */}
         <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
           <div className="bg-white rounded-2xl p-4 text-center shadow-sm border border-gray-100">
             <div className="text-sm font-bold text-gray-500 mb-1">ทั้งหมด</div>
@@ -246,10 +242,8 @@ export default function DashboardStatsPage() {
           </div>
         </div>
 
-        {/* Charts Section */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           
-          {/* Donut Chart */}
           <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 flex flex-col items-center">
             <h3 className="text-sm font-bold text-gray-700 mb-4">สัดส่วนภาพรวม</h3>
             <div className="h-64 w-full relative">
@@ -284,7 +278,6 @@ export default function DashboardStatsPage() {
             </div>
           </div>
 
-          {/* Stacked Bar Chart */}
           <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 flex flex-col items-center">
             <h3 className="text-sm font-bold text-gray-700 mb-4">เปรียบเทียบแต่ละระดับชั้น</h3>
             <div className="h-64 w-full">
@@ -295,17 +288,18 @@ export default function DashboardStatsPage() {
                   <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: '#6b7280' }} />
                   <RechartsTooltip cursor={{ fill: '#f9fafb' }} />
                   
+                  {/* แสดงแท่งสีและตัวเลข (ซ่อนเลข 0) */}
                   <Bar dataKey="ผ่าน" stackId="a" fill="#16a34a" barSize={40}>
-                    <LabelList dataKey="ผ่าน" position="center" fill="#ffffff" style={{ fontSize: '12px', fontWeight: 'bold' }} formatter={(val: number) => val > 0 ? val : ''} />
+                    <LabelList dataKey="ผ่าน" position="center" fill="#ffffff" style={{ fontSize: '13px', fontWeight: 'bold' }} formatter={(val: number) => val > 0 ? val : ''} />
                   </Bar>
                   <Bar dataKey="ไม่ผ่าน" stackId="a" fill="#dc2626">
-                    <LabelList dataKey="ไม่ผ่าน" position="center" fill="#ffffff" style={{ fontSize: '12px', fontWeight: 'bold' }} formatter={(val: number) => val > 0 ? val : ''} />
+                    <LabelList dataKey="ไม่ผ่าน" position="center" fill="#ffffff" style={{ fontSize: '13px', fontWeight: 'bold' }} formatter={(val: number) => val > 0 ? val : ''} />
                   </Bar>
                   <Bar dataKey="ขาด" stackId="a" fill="#d97706">
-                    <LabelList dataKey="ขาด" position="center" fill="#ffffff" style={{ fontSize: '12px', fontWeight: 'bold' }} formatter={(val: number) => val > 0 ? val : ''} />
+                    <LabelList dataKey="ขาด" position="center" fill="#ffffff" style={{ fontSize: '13px', fontWeight: 'bold' }} formatter={(val: number) => val > 0 ? val : ''} />
                   </Bar>
                   <Bar dataKey="รอตรวจ" stackId="a" fill="#e5e7eb" radius={[4, 4, 0, 0]}>
-                    <LabelList dataKey="รอตรวจ" position="center" fill="#4b5563" style={{ fontSize: '12px', fontWeight: 'bold' }} formatter={(val: number) => val > 0 ? val : ''} />
+                    <LabelList dataKey="รอตรวจ" position="center" fill="#374151" style={{ fontSize: '13px', fontWeight: 'bold' }} formatter={(val: number) => val > 0 ? val : ''} />
                   </Bar>
                 </BarChart>
               </ResponsiveContainer>
@@ -319,7 +313,6 @@ export default function DashboardStatsPage() {
           </div>
         </div>
 
-        {/* Table Section */}
         <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
           <div className="p-4 border-b border-gray-100 flex flex-wrap items-center justify-between gap-4">
             <div className="flex items-center gap-2">
