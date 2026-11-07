@@ -5,13 +5,16 @@ import { createClient } from '@/utils/supabase/client'
 import {
   PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, ResponsiveContainer, LabelList
 } from 'recharts'
-import { PieChart as PieChartIcon, Table as TableIcon, FileSpreadsheet, Calendar } from 'lucide-react'
+import { PieChart as PieChartIcon, Table as TableIcon, FileSpreadsheet, Calendar, X } from 'lucide-react'
 import * as XLSX from 'xlsx'
 
 interface Student {
   id: string
+  student_id: string
+  full_name: string
   class_name: string
   room: number
+  number: number
 }
 
 interface Inspection {
@@ -32,6 +35,9 @@ export default function DashboardStatsPage() {
   
   const [filterMonth, setFilterMonth] = useState(new Date().toISOString().slice(0, 7))
   const [filterType, setFilterType] = useState('all')
+
+  // State สำหรับควบคุม Popup รายชื่อนักเรียนรายห้อง
+  const [selectedRoomDetail, setSelectedRoomDetail] = useState<string | null>(null)
 
   useEffect(() => {
     fetchDashboardData()
@@ -59,7 +65,8 @@ export default function DashboardStatsPage() {
       return allData
     }
 
-    const studentsData = await fetchAllRows('profiles', 'id, class_name, room', { role: 'student' })
+    // ดึงข้อมูลนักเรียนพร้อม student_id, full_name และ number เพื่อนำมาแสดงใน Modal
+    const studentsData = await fetchAllRows('profiles', 'id, student_id, full_name, class_name, room, number', { role: 'student' })
     setStudents(studentsData)
 
     const inspectionsData = await fetchAllRows('inspections', 'student_id, status, hair_status, nails_status, uniform_status, attempt_number', { inspection_month: filterMonth })
@@ -113,7 +120,7 @@ export default function DashboardStatsPage() {
     { name: 'รอตรวจ', value: totalPending, color: '#e5e7eb' },
   ]
 
-  // --- ข้อมูลกราฟแท่ง Stacked Bar (แยก ม.1 - ม.6) ---
+  // --- ข้อมูลกราฟแท่ง Stacked Bar ---
   const classesList = ['ม.1', 'ม.2', 'ม.3', 'ม.4', 'ม.5', 'ม.6']
   const barChartData = classesList.map(c => {
     const classStudents = students.filter(s => s.class_name === c)
@@ -160,6 +167,7 @@ export default function DashboardStatsPage() {
     return parseInt(roomA) - parseInt(roomB)
   })
 
+  // ส่งออก Excel รวมทุกห้อง
   const exportToExcel = () => {
     const rows = sortedRooms.map(roomKey => ({
       'ห้องเรียน': roomKey,
@@ -176,11 +184,55 @@ export default function DashboardStatsPage() {
     XLSX.writeFile(workbook, `สถิติ_${filterType}_${filterMonth}.xlsx`)
   }
 
+  // ส่งออก Excel เฉพาะห้องที่เลือกใน Modal
+  const exportRoomDetailToExcel = (roomKey: string) => {
+    const roomStudents = students
+      .filter(s => `${s.class_name}/${s.room}` === roomKey)
+      .sort((a, b) => (a.number || 0) - (b.number || 0))
+
+    const rows = roomStudents.map((s, idx) => {
+      const st = getStudentStatus(s.id)
+      let statusText = 'รอตรวจ'
+      if (st === 'pass') statusText = 'ผ่าน'
+      if (st === 'fail') statusText = 'ไม่ผ่าน'
+      if (st === 'absent') statusText = 'ขาด'
+
+      return {
+        'เลขที่': s.number || idx + 1,
+        'รหัสนักเรียน': s.student_id || '',
+        'ชื่อ-สกุล': s.full_name,
+        'ผลการตรวจ': statusText
+      }
+    })
+
+    const worksheet = XLSX.utils.json_to_sheet(rows)
+    const workbook = XLSX.utils.book_new()
+    XLSX.utils.book_append_sheet(workbook, worksheet, `รายชื่อ_${roomKey.replace('/', '_')}`)
+    XLSX.writeFile(workbook, `รายชื่อนักเรียน_ห้อง_${roomKey.replace('/', '_')}_${filterMonth}.xlsx`)
+  }
+
   if (loading) {
     return <div className="p-12 text-center text-blue-600 font-bold animate-pulse">กำลังโหลดและคำนวณข้อมูลทั้งหมด...</div>
   }
 
   const thaiMonthDisplay = new Date(filterMonth + '-01').toLocaleDateString('th-TH', { month: 'long', year: 'numeric' })
+
+  // กรองนักเรียนสำหรับ Modal
+  const selectedRoomStudents = selectedRoomDetail
+    ? students
+        .filter(s => `${s.class_name}/${s.room}` === selectedRoomDetail)
+        .sort((a, b) => (a.number || 0) - (b.number || 0))
+    : []
+
+  // คำนวณยอดรวมใน Modal
+  let modalPass = 0, modalFail = 0, modalAbsent = 0, modalPending = 0
+  selectedRoomStudents.forEach(s => {
+    const st = getStudentStatus(s.id)
+    if (st === 'pass') modalPass++
+    else if (st === 'fail') modalFail++
+    else if (st === 'absent') modalAbsent++
+    else modalPending++
+  })
 
   return (
     <div className="min-h-screen bg-[#38bdf8]/20 p-4 md:p-8 font-sans">
@@ -294,7 +346,6 @@ export default function DashboardStatsPage() {
                   <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: '#6b7280' }} />
                   <RechartsTooltip cursor={{ fill: '#f9fafb' }} />
                   
-                  {/* เปลี่ยน (val: number) เป็น (val: any) เพื่อแก้ปัญหา TypeScript Error */}
                   <Bar dataKey="ผ่าน" stackId="a" fill="#16a34a" barSize={40}>
                     <LabelList dataKey="ผ่าน" position="center" fill="#ffffff" style={{ fontSize: '12px', fontWeight: 'bold' }} formatter={(val: any) => val > 0 ? val : ''} />
                   </Bar>
@@ -319,12 +370,12 @@ export default function DashboardStatsPage() {
           </div>
         </div>
 
-        {/* Table */}
+        {/* Table Section (คลิกแถวเพื่อเปิด Popup) */}
         <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
           <div className="p-4 border-b border-gray-100 flex flex-wrap items-center justify-between gap-4">
             <div className="flex items-center gap-2">
               <TableIcon className="w-5 h-5 text-blue-600" />
-              <h3 className="text-sm font-extrabold text-gray-800">สรุปผลแยกตามห้องเรียน</h3>
+              <h3 className="text-sm font-extrabold text-gray-800">สรุปผลแยกตามห้องเรียน <span className="text-xs font-normal text-gray-500">(คลิกที่แถวเพื่อดูรายชื่อนักเรียน)</span></h3>
             </div>
             <button 
               onClick={exportToExcel}
@@ -348,8 +399,13 @@ export default function DashboardStatsPage() {
               </thead>
               <tbody className="divide-y divide-gray-100 text-sm font-bold text-gray-600">
                 {sortedRooms.map((roomKey) => (
-                  <tr key={roomKey} className="hover:bg-blue-50/50 transition">
-                    <td className="py-3 px-4 text-blue-600">{roomKey}</td>
+                  <tr 
+                    key={roomKey} 
+                    onClick={() => setSelectedRoomDetail(roomKey)}
+                    className="hover:bg-blue-50/70 transition cursor-pointer active:bg-blue-100/80"
+                    title="คลิกเพื่อดูรายชื่อนักเรียนในห้องนี้"
+                  >
+                    <td className="py-3 px-4 text-blue-600 underline underline-offset-2">{roomKey}</td>
                     <td className="py-3 px-4">{classrooms[roomKey].total}</td>
                     <td className="py-3 px-4 text-[#16a34a]">{classrooms[roomKey].pass}</td>
                     <td className="py-3 px-4 text-[#dc2626]">{classrooms[roomKey].fail}</td>
@@ -366,6 +422,97 @@ export default function DashboardStatsPage() {
         </div>
 
       </div>
+
+      {/* Modal / Popup แสดงรายชื่อนักเรียนรายห้อง */}
+      {selectedRoomDetail && (
+        <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="bg-white rounded-2xl max-w-2xl w-full overflow-hidden shadow-2xl border border-gray-100 flex flex-col max-h-[85vh]">
+            
+            {/* Modal Header */}
+            <div className="bg-[#1d4ed8] text-white px-6 py-4 flex justify-between items-center shadow-md">
+              <div className="flex items-center gap-2">
+                <span className="text-xl">👥</span>
+                <h2 className="text-lg md:text-xl font-extrabold tracking-tight">รายชื่อห้อง {selectedRoomDetail}</h2>
+              </div>
+              <button 
+                onClick={() => setSelectedRoomDetail(null)}
+                className="text-white/80 hover:text-white bg-white/10 hover:bg-white/20 p-1.5 rounded-lg transition"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Modal Table Content */}
+            <div className="overflow-y-auto p-4 flex-1">
+              <table className="w-full text-left border-collapse">
+                <thead className="bg-gray-100 text-gray-700 font-bold text-xs sticky top-0 z-10 shadow-sm">
+                  <tr>
+                    <th className="py-3 px-4 text-center w-16">เลขที่</th>
+                    <th className="py-3 px-4 text-center w-28">รหัสนักเรียน</th>
+                    <th className="py-3 px-4">ชื่อ - สกุล</th>
+                    <th className="py-3 px-4 text-center w-28">ผลการตรวจ</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-100 text-xs md:text-sm font-semibold">
+                  {selectedRoomStudents.map((s, idx) => {
+                    const st = getStudentStatus(s.id)
+                    return (
+                      <tr key={s.id} className="hover:bg-gray-50 transition">
+                        <td className="py-3 px-4 text-center font-bold text-gray-800">{s.number || idx + 1}</td>
+                        <td className="py-3 px-4 text-center text-gray-500 font-mono">{s.student_id || '-'}</td>
+                        <td className="py-3 px-4 text-gray-900 font-bold">{s.full_name}</td>
+                        <td className="py-3 px-4 text-center">
+                          {st === 'pass' && (
+                            <span className="px-3 py-1 rounded-full text-xs font-extrabold bg-[#16a34a] text-white shadow-sm">
+                              ผ่าน
+                            </span>
+                          )}
+                          {st === 'fail' && (
+                            <span className="px-3 py-1 rounded-full text-xs font-extrabold bg-[#dc2626] text-white shadow-sm">
+                              ไม่ผ่าน
+                            </span>
+                          )}
+                          {st === 'absent' && (
+                            <span className="px-3 py-1 rounded-full text-xs font-extrabold bg-[#d97706] text-white shadow-sm">
+                              ขาด
+                            </span>
+                          )}
+                          {st === 'pending' && (
+                            <span className="px-3 py-1 rounded-full text-xs font-extrabold bg-gray-500 text-white shadow-sm">
+                              รอตรวจ
+                            </span>
+                          )}
+                        </td>
+                      </tr>
+                    )
+                  })}
+                  {selectedRoomStudents.length === 0 && (
+                    <tr>
+                      <td colSpan={4} className="py-8 text-center text-gray-400 font-medium">ไม่พบรายชื่อนักเรียนในห้องนี้</td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+
+            {/* Modal Footer */}
+            <div className="p-4 border-t border-gray-100 bg-gray-50 flex flex-wrap items-center justify-between gap-3 text-xs font-bold text-gray-700">
+              <div>
+                ผ่าน: <span className="text-[#16a34a]">{modalPass}</span> | ไม่ผ่าน: <span className="text-[#dc2626]">{modalFail}</span> | ขาด: <span className="text-[#d97706]">{modalAbsent}</span> | รอตรวจ: <span className="text-gray-500">{modalPending}</span>
+              </div>
+              <button
+                onClick={() => exportRoomDetailToExcel(selectedRoomDetail)}
+                className="flex items-center gap-1.5 bg-[#2563eb] hover:bg-blue-700 text-white px-3.5 py-2 rounded-xl text-xs font-bold transition shadow-sm"
+              >
+                <FileSpreadsheet className="w-4 h-4" />
+                <span>สร้าง Google Sheet (ตามที่กรอง)</span>
+              </button>
+            </div>
+
+          </div>
+        </div>
+      )}
+
     </div>
   )
 }
