@@ -483,16 +483,24 @@ export default function CompleteInspectionPage() {
                 </span>
               </div>
 
-              <div className="flex items-center gap-1.5 bg-gray-50 border border-gray-200 px-3 py-1.5 rounded-xl text-xs font-bold text-gray-700 w-full sm:w-auto">
-                <Calendar className="w-3.5 h-3.5 text-blue-600 shrink-0" />
-                <span className="shrink-0">รอบเดือน:</span>
-                <input
-                  type="month"
-                  value={inspectionMonth}
-                  onChange={(e) => setInspectionMonth(e.target.value)}
-                  className="bg-transparent font-bold outline-none cursor-pointer text-blue-800 w-full"
-                />
-              </div>
+              <div className="relative flex items-center gap-1.5 bg-gray-50 border border-gray-200 px-3 py-1.5 rounded-xl text-xs font-bold text-gray-700 w-full sm:w-auto overflow-hidden">
+  <Calendar className="w-3.5 h-3.5 text-blue-600 shrink-0" />
+  
+  {/* แสดงชื่อเดือนเป็นภาษาไทย */}
+  <span className="text-blue-800 shrink-0 pointer-events-none">
+    {new Date(inspectionMonth + '-01').toLocaleDateString('th-TH', { 
+      month: 'long', 
+      year: 'numeric' 
+    })}
+  </span>
+
+  <input
+    type="month"
+    value={inspectionMonth}
+    onChange={(e) => setInspectionMonth(e.target.value)}
+    className="absolute inset-0 opacity-0 cursor-pointer w-full h-full"
+  />
+</div>
 
               <div className="relative w-full sm:w-auto">
                 <select
@@ -500,7 +508,7 @@ export default function CompleteInspectionPage() {
                   onChange={(e) => setSelectedCategory(e.target.value as CategoryType)}
                   className="w-full appearance-none bg-blue-50 hover:bg-blue-100 text-blue-800 font-bold text-xs md:text-sm px-3.5 py-1.5 pr-8 rounded-xl border border-blue-200 outline-none cursor-pointer transition"
                 >
-                  <option value="all">📋 รายการ: ทุกรายการ (ภาพรวม)</option>
+                  <option value="all">📋 รายการ: ทุกรายการ </option>
                   <option value="hair">✂️ รายการ: ทรงผม</option>
                   <option value="nails">✨ รายการ: เล็บ</option>
                   <option value="uniform">👔 รายการ: การแต่งกาย</option>
