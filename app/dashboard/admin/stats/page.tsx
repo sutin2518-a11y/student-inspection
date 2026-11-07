@@ -294,18 +294,18 @@ export default function DashboardStatsPage() {
                   <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: '#6b7280' }} />
                   <RechartsTooltip cursor={{ fill: '#f9fafb' }} />
                   
-                  {/* กราฟแท่งซ้อนกัน (Stacked) โดยใช้ stackId เดียวกัน */}
+                  {/* เปลี่ยน (val: number) เป็น (val: any) เพื่อแก้ปัญหา TypeScript Error */}
                   <Bar dataKey="ผ่าน" stackId="a" fill="#16a34a" barSize={40}>
-                    <LabelList dataKey="ผ่าน" position="center" fill="#ffffff" style={{ fontSize: '12px', fontWeight: 'bold' }} formatter={(val: number) => val > 0 ? val : ''} />
+                    <LabelList dataKey="ผ่าน" position="center" fill="#ffffff" style={{ fontSize: '12px', fontWeight: 'bold' }} formatter={(val: any) => val > 0 ? val : ''} />
                   </Bar>
                   <Bar dataKey="ไม่ผ่าน" stackId="a" fill="#dc2626">
-                    <LabelList dataKey="ไม่ผ่าน" position="center" fill="#ffffff" style={{ fontSize: '12px', fontWeight: 'bold' }} formatter={(val: number) => val > 0 ? val : ''} />
+                    <LabelList dataKey="ไม่ผ่าน" position="center" fill="#ffffff" style={{ fontSize: '12px', fontWeight: 'bold' }} formatter={(val: any) => val > 0 ? val : ''} />
                   </Bar>
                   <Bar dataKey="ขาด" stackId="a" fill="#d97706">
-                    <LabelList dataKey="ขาด" position="center" fill="#ffffff" style={{ fontSize: '12px', fontWeight: 'bold' }} formatter={(val: number) => val > 0 ? val : ''} />
+                    <LabelList dataKey="ขาด" position="center" fill="#ffffff" style={{ fontSize: '12px', fontWeight: 'bold' }} formatter={(val: any) => val > 0 ? val : ''} />
                   </Bar>
                   <Bar dataKey="รอตรวจ" stackId="a" fill="#e5e7eb" radius={[4, 4, 0, 0]}>
-                    <LabelList dataKey="รอตรวจ" position="center" fill="#374151" style={{ fontSize: '12px', fontWeight: 'bold' }} formatter={(val: number) => val > 0 ? val : ''} />
+                    <LabelList dataKey="รอตรวจ" position="center" fill="#374151" style={{ fontSize: '12px', fontWeight: 'bold' }} formatter={(val: any) => val > 0 ? val : ''} />
                   </Bar>
                 </BarChart>
               </ResponsiveContainer>
