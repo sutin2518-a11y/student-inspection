@@ -3,9 +3,9 @@
 import { useState, useEffect } from 'react'
 import { createClient } from '@/utils/supabase/client'
 import {
-  PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, Legend, ResponsiveContainer
+  PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, ResponsiveContainer
 } from 'recharts'
-import { PieChart as PieChartIcon, Table as TableIcon, FileSpreadsheet } from 'lucide-react'
+import { PieChart as PieChartIcon, Table as TableIcon, FileSpreadsheet, Calendar } from 'lucide-react'
 import * as XLSX from 'xlsx'
 
 interface Student {
@@ -17,6 +17,9 @@ interface Student {
 interface Inspection {
   student_id: string
   status: string
+  hair_status: string
+  nails_status: string
+  uniform_status: string
   attempt_number: number
 }
 
@@ -25,7 +28,7 @@ export default function DashboardStatsPage() {
   const [loading, setLoading] = useState(true)
   
   const [students, setStudents] = useState<Student[]>([])
-  const [inspections, setInspections] = useState<Record<string, string>>({})
+  const [inspections, setInspections] = useState<Record<string, Inspection>>({})
   
   const [filterMonth, setFilterMonth] = useState(new Date().toISOString().slice(0, 7))
   const [filterType, setFilterType] = useState('all')
@@ -37,22 +40,37 @@ export default function DashboardStatsPage() {
   const fetchDashboardData = async () => {
     setLoading(true)
     
-    // 1. ดึงข้อมูลนักเรียนทั้งหมด
-    const { data: studentsData } = await supabase
-      .from('profiles')
-      .select('id, class_name, room')
-      .eq('role', 'student')
-      
-    setStudents(studentsData || [])
+    // ฟังก์ชันช่วยดึงข้อมูลทะลุขีดจำกัด 1000 คน (Pagination)
+    const fetchAllRows = async (table: string, select: string, filters: Record<string, string>) => {
+      let allData: any[] = []
+      let from = 0
+      const step = 1000
+      while (true) {
+        let query = supabase.from(table).select(select).range(from, from + step - 1)
+        
+        // ใส่เงื่อนไขกรอง
+        if (filters.role) query = query.eq('role', filters.role)
+        if (filters.inspection_month) query = query.eq('inspection_month', filters.inspection_month)
+        
+        const { data, error } = await query
+        if (error || !data || data.length === 0) break
+        
+        allData = [...allData, ...data]
+        if (data.length < step) break // ถ้าได้มาน้อยกว่า 1000 แสดงว่าหมดแล้ว
+        from += step
+      }
+      return allData
+    }
 
-    // 2. ดึงข้อมูลการตรวจของเดือนที่เลือก
-    const { data: inspectionsData } = await supabase
-      .from('inspections')
-      .select('student_id, status, attempt_number')
-      .eq('inspection_month', filterMonth)
+    // 1. ดึงข้อมูลนักเรียนทั้งหมด (วนลูปจนครบ)
+    const studentsData = await fetchAllRows('profiles', 'id, class_name, room', { role: 'student' })
+    setStudents(studentsData)
+
+    // 2. ดึงข้อมูลการตรวจของเดือนที่เลือก (วนลูปจนครบ)
+    const inspectionsData = await fetchAllRows('inspections', 'student_id, status, hair_status, nails_status, uniform_status, attempt_number', { inspection_month: filterMonth })
 
     // 3. กรองเอาเฉพาะ "รอบล่าสุด" ของนักเรียนแต่ละคน
-    const latestStatus: Record<string, any> = {}
+    const latestStatus: Record<string, Inspection> = {}
     if (inspectionsData) {
       inspectionsData.forEach((record: Inspection) => {
         const current = latestStatus[record.student_id]
@@ -62,14 +80,23 @@ export default function DashboardStatsPage() {
       })
     }
 
-    // แมปสถานะเป็น Key-Value ง่ายๆ
-    const statusMap: Record<string, string> = {}
-    Object.keys(latestStatus).forEach(key => {
-      statusMap[key] = latestStatus[key].status
-    })
-
-    setInspections(statusMap)
+    setInspections(latestStatus)
     setLoading(false)
+  }
+
+  // --- ฟังก์ชันดึงสถานะตามหมวดหมู่ที่เลือก (ทุกรายการ / ทรงผม / เล็บ / ชุด) ---
+  const getStudentStatus = (studentId: string) => {
+    const record = inspections[studentId]
+    if (!record) return 'pending'
+    
+    let rawStatus = 'pending'
+    if (filterType === 'all') rawStatus = record.status
+    else if (filterType === 'hair') rawStatus = record.hair_status
+    else if (filterType === 'nails') rawStatus = record.nails_status
+    else if (filterType === 'uniform') rawStatus = record.uniform_status
+    
+    // ปรับ waive ให้กลายเป็น absent เพื่อง่ายต่อการสรุปยอด
+    return rawStatus === 'waive' ? 'absent' : (rawStatus || 'pending')
   }
 
   // --- คำนวณสถิติ ---
@@ -80,10 +107,10 @@ export default function DashboardStatsPage() {
   let totalPending = 0
 
   students.forEach(s => {
-    const status = inspections[s.id]
+    const status = getStudentStatus(s.id)
     if (status === 'pass') totalPass++
     else if (status === 'fail') totalFail++
-    else if (status === 'waive' || status === 'absent') totalAbsent++
+    else if (status === 'absent') totalAbsent++
     else totalPending++
   })
 
@@ -101,10 +128,10 @@ export default function DashboardStatsPage() {
     let pass = 0, fail = 0, absent = 0, pending = 0
     
     classStudents.forEach(s => {
-      const status = inspections[s.id]
+      const status = getStudentStatus(s.id)
       if (status === 'pass') pass++
       else if (status === 'fail') fail++
-      else if (status === 'waive' || status === 'absent') absent++
+      else if (status === 'absent') absent++
       else pending++
     })
 
@@ -127,13 +154,12 @@ export default function DashboardStatsPage() {
     }
     classrooms[roomKey].total++
     
-    const status = inspections[s.id]
+    const status = getStudentStatus(s.id)
     if (status === 'pass') classrooms[roomKey].pass++
     else if (status === 'fail') classrooms[roomKey].fail++
-    else classrooms[roomKey].absent++ // ขาด + ยังไม่ตรวจรวมกันในตาราง
+    else classrooms[roomKey].absent++ 
   })
 
-  // เรียงลำดับห้องเรียน (ม.1/1, ม.1/2 ... ม.6/10)
   const sortedRooms = Object.keys(classrooms).sort((a, b) => {
     const [classA, roomA] = a.replace('ม.', '').split('/')
     const [classB, roomB] = b.replace('ม.', '').split('/')
@@ -147,42 +173,59 @@ export default function DashboardStatsPage() {
       'นร.ทั้งหมด': classrooms[roomKey].total,
       'ผ่าน': classrooms[roomKey].pass,
       'ไม่ผ่าน': classrooms[roomKey].fail,
-      'ขาดตรวจ': classrooms[roomKey].absent
+      'ขาด/รอตรวจ': classrooms[roomKey].absent
     }))
 
     const worksheet = XLSX.utils.json_to_sheet(rows)
     const workbook = XLSX.utils.book_new()
     XLSX.utils.book_append_sheet(workbook, worksheet, 'สถิติแยกห้อง')
-    XLSX.writeFile(workbook, `สถิติภาพรวม_${filterMonth}.xlsx`)
+    XLSX.writeFile(workbook, `สถิติ_${filterType}_${filterMonth}.xlsx`)
   }
 
   if (loading) {
-    return <div className="p-8 text-center text-gray-500 font-bold">กำลังโหลดข้อมูลสถิติ...</div>
+    return <div className="p-12 text-center text-blue-600 font-bold animate-pulse">กำลังโหลดและคำนวณข้อมูลทั้งหมด...</div>
   }
+
+  // แปลงเดือนเป็นภาษาไทย
+  const thaiMonthDisplay = new Date(filterMonth + '-01').toLocaleDateString('th-TH', { month: 'long', year: 'numeric' })
 
   return (
     <div className="min-h-screen bg-[#38bdf8]/20 p-4 md:p-8 font-sans">
       <div className="max-w-7xl mx-auto space-y-6">
         
         {/* Header Section */}
-        <div className="bg-white rounded-2xl p-4 shadow-sm border border-gray-100 flex flex-wrap items-center justify-between gap-4">
+        <div className="bg-white rounded-2xl p-4 shadow-sm border border-gray-100 flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div className="flex items-center gap-2">
             <PieChartIcon className="w-6 h-6 text-blue-600" />
             <h1 className="text-xl font-extrabold text-gray-800">แดชบอร์ดสถิติภาพรวม</h1>
           </div>
-          <div className="flex items-center gap-3">
-            <input 
-              type="month" 
-              value={filterMonth}
-              onChange={(e) => setFilterMonth(e.target.value)}
-              className="border border-gray-200 rounded-lg px-3 py-1.5 text-sm font-semibold text-gray-700 outline-none focus:ring-2 focus:ring-blue-500"
-            />
+          
+          <div className="flex flex-wrap items-center gap-3">
+            {/* ตัวเลือกเดือนที่เป็นภาษาไทย */}
+            <div 
+              className="relative flex items-center gap-2 bg-gray-50 hover:bg-gray-100 border border-gray-200 px-3 py-1.5 rounded-lg cursor-pointer transition"
+              onClick={(e) => { const input = e.currentTarget.querySelector('input'); if (input && 'showPicker' in input) { (input as any).showPicker(); } }}
+            >
+              <Calendar className="w-4 h-4 text-blue-600" />
+              <span className="text-sm font-semibold text-gray-700">{thaiMonthDisplay}</span>
+              <input 
+                type="month" 
+                value={filterMonth}
+                onChange={(e) => setFilterMonth(e.target.value)}
+                className="w-0 h-0 opacity-0 absolute pointer-events-none"
+              />
+            </div>
+
+            {/* ตัวเลือกหมวดหมู่การประเมิน */}
             <select 
               value={filterType}
               onChange={(e) => setFilterType(e.target.value)}
-              className="border border-gray-200 bg-gray-50 rounded-lg px-3 py-1.5 text-sm font-semibold text-gray-700 outline-none focus:ring-2 focus:ring-blue-500"
+              className="border border-gray-200 bg-gray-50 hover:bg-gray-100 rounded-lg px-3 py-1.5 text-sm font-semibold text-gray-700 outline-none focus:ring-2 focus:ring-blue-500 transition cursor-pointer"
             >
-              <option value="all">📊 สถิติตรวจรวมทุกรายการ</option>
+              <option value="all">📊 ภาพรวมทุกรายการ</option>
+              <option value="hair">✂️ เฉพาะ: ทรงผม</option>
+              <option value="nails">✨ เฉพาะ: เล็บ</option>
+              <option value="uniform">👔 เฉพาะ: การแต่งกาย</option>
             </select>
           </div>
         </div>
@@ -191,19 +234,19 @@ export default function DashboardStatsPage() {
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
           <div className="bg-white rounded-2xl p-4 text-center shadow-sm border border-gray-100">
             <div className="text-sm font-bold text-gray-500 mb-1">ทั้งหมด</div>
-            <div className="text-2xl font-black text-gray-800">{totalStudents}</div>
+            <div className="text-3xl font-black text-gray-800">{totalStudents}</div>
           </div>
           <div className="bg-[#16a34a] rounded-2xl p-4 text-center shadow-sm">
             <div className="text-sm font-bold text-white/90 mb-1">ผ่าน</div>
-            <div className="text-2xl font-black text-white">{totalPass}</div>
+            <div className="text-3xl font-black text-white">{totalPass}</div>
           </div>
           <div className="bg-[#dc2626] rounded-2xl p-4 text-center shadow-sm">
             <div className="text-sm font-bold text-white/90 mb-1">ไม่ผ่าน</div>
-            <div className="text-2xl font-black text-white">{totalFail}</div>
+            <div className="text-3xl font-black text-white">{totalFail}</div>
           </div>
           <div className="bg-[#eab308] rounded-2xl p-4 text-center shadow-sm">
             <div className="text-sm font-bold text-white/90 mb-1">ขาดตรวจ</div>
-            <div className="text-2xl font-black text-white">{totalAbsent}</div>
+            <div className="text-3xl font-black text-white">{totalAbsent}</div>
           </div>
         </div>
 
@@ -254,12 +297,7 @@ export default function DashboardStatsPage() {
                   <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: '#6b7280', fontWeight: 'bold' }} />
                   <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: '#6b7280' }} />
                   <RechartsTooltip cursor={{ fill: '#f9fafb' }} />
-                  <Bar dataKey="รวม" fill="#facc15" radius={[4, 4, 0, 0]} barSize={40}>
-                    {/* Label On Top of Bar */}
-                    {/* {barChartData.map((entry, index) => (
-                      <LabelList dataKey="รวม" position="top" style={{ fontSize: '10px', fontWeight: 'bold', fill: '#3b82f6' }} />
-                    ))} */}
-                  </Bar>
+                  <Bar dataKey="รวม" fill="#facc15" radius={[4, 4, 0, 0]} barSize={40} />
                 </BarChart>
               </ResponsiveContainer>
             </div>
