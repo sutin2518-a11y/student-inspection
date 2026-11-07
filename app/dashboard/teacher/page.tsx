@@ -12,7 +12,6 @@ import {
   Check,
   X,
   UserX,
-  Camera,
   Menu,
   LogOut,
   ChevronDown,
@@ -22,7 +21,7 @@ import {
   Calendar,
   Download,
   SlidersHorizontal,
-  PlusCircle // <--- นำเข้า Icon เพิ่มเติมสำหรับปุ่มเพิ่มรอบตรวจ
+  PlusCircle
 } from 'lucide-react'
 
 type StatusType = 'pass' | 'fail' | 'absent' | 'pending'
@@ -236,7 +235,7 @@ export default function CompleteInspectionPage() {
     setHasUnsavedChanges(true)
   }
 
-  // ฟังก์ชันใหม่: ลบ ID ทิ้ง เพื่อสั่งให้บันทึกเป็น Row ใหม่ และเพิ่มรอบ
+  // ฟังก์ชันเริ่มรอบใหม่ ลบ ID ทิ้ง เพื่อสั่งให้บันทึกเป็น Row ใหม่ และคงสถานะเดิมเอาไว้
   const handleStartNewRound = (studentId: string) => {
     setStudentStatuses(prev => {
       const current = prev[studentId]
@@ -247,10 +246,8 @@ export default function CompleteInspectionPage() {
         [studentId]: {
           ...current,
           inspection_id: undefined, // ลบ ID เพื่อบังคับให้ Insert
-          attempt_number: (current.attempt_number || 1) + 1,
-          hair: 'pending',
-          nails: 'pending',
-          uniform: 'pending'
+          attempt_number: (current.attempt_number || 1) + 1
+          // เราไม่ลบสถานะ hair, nails, uniform ทิ้ง เพื่อให้แสดงผลสถานะเดิมค้างไว้
         }
       }
     })
@@ -292,7 +289,6 @@ export default function CompleteInspectionPage() {
         record.id = st.inspection_id
       }
       
-      // การนับรอบ (ถ้ากดปุ่มเพิ่มรอบ attempt_number จะถูกบวกไปแล้วใน State)
       record.attempt_number = st.attempt_number || 1
       record.is_correction = record.attempt_number > 1
 
@@ -582,14 +578,6 @@ export default function CompleteInspectionPage() {
                           
                           <td className="py-2.5 px-2 md:py-3 md:px-4 text-center">
                             <div className="flex flex-col items-center justify-center gap-1.5">
-                              <button 
-                                onClick={() => Swal.fire({ title: 'ระบบ AI', text: `กล้องสำหรับ ${student.full_name}`, icon: 'info' })} 
-                                className="inline-flex items-center gap-1 bg-black text-white px-2 py-1 md:px-2.5 md:py-1.5 rounded-lg text-[10px] md:text-xs font-bold hover:bg-gray-800 transition w-full justify-center"
-                              >
-                                <Camera className="w-3 h-3 md:w-3.5 md:h-3.5" />
-                                <span>AI</span>
-                              </button>
-
                               {/* ปุ่มสำหรับเริ่มรอบใหม่ จะแสดงเมื่อเคยตรวจและบันทึกแล้ว */}
                               {studentStatuses[student.id]?.inspection_id && (
                                 <button 
@@ -631,13 +619,6 @@ export default function CompleteInspectionPage() {
                                 className={`p-1.5 rounded-lg transition ${studentStatuses[student.id]?.[selectedCategory] === 'absent' ? 'bg-[#d97706] text-white shadow-sm' : 'bg-white text-[#d97706] border border-gray-200 hover:bg-amber-50'}`}
                               >
                                 <UserX className="w-3.5 h-3.5 stroke-[2.5]" />
-                              </button>
-                              <button 
-                                onClick={() => Swal.fire({ title: 'ระบบ AI', text: `กล้องสำหรับ ${student.full_name}`, icon: 'info' })} 
-                                className="flex items-center gap-1 bg-black text-white px-2 py-1.5 rounded-lg text-xs font-bold hover:bg-gray-800 transition"
-                              >
-                                <Camera className="w-3.5 h-3.5" />
-                                <span>AI</span>
                               </button>
 
                               {/* ปุ่มสำหรับเริ่มรอบใหม่ (หมวดหมู่เดี่ยว) */}
