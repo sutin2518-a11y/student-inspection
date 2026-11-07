@@ -77,7 +77,7 @@ export default function CompleteInspectionPage() {
   const mobileMenuRef = useRef<HTMLDivElement>(null)
 
   const classes = ['ม.1', 'ม.2', 'ม.3', 'ม.4', 'ม.5', 'ม.6']
-  const rooms = Array.from({ length: 15 }, (_, i) => i + 1)
+  const rooms = Array.from({ length: 12 }, (_, i) => i + 1)
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
