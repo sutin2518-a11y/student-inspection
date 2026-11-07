@@ -261,7 +261,11 @@ export default function CompleteInspectionPage() {
 
     const toDbStatus = (st: StatusType) => (st === 'absent' ? 'waive' : st)
 
-    const payload = students.map(s => {
+    // แยก Array สำหรับคนที่มี ID เดิม (อัปเดต) และคนที่ไม่มี ID (สร้างใหม่/เริ่มรอบใหม่)
+    const recordsToUpdate: any[] = []
+    const recordsToInsert: any[] = []
+
+    students.forEach(s => {
       const st = studentStatuses[s.id] || { hair: 'pending', nails: 'pending', uniform: 'pending' }
 
       let overall: StatusType = 'pass'
@@ -281,43 +285,60 @@ export default function CompleteInspectionPage() {
         inspection_month: inspectionMonth,
         academic_year: academicYear,
         semester: semester,
-        is_resolved: overall === 'pass'
+        is_resolved: overall === 'pass',
+        attempt_number: st.attempt_number || 1,
+        is_correction: (st.attempt_number || 1) > 1
       }
 
-      // ถ้ามี ID เดิมแสดงว่าครูต้องการแก้อัปเดตข้อมูลของรอบนั้นๆ
+      // ถ้ามี ID เดิม แสดงว่าอัปเดตรอบนั้นๆ
       if (st.inspection_id) {
         record.id = st.inspection_id
+        recordsToUpdate.push(record)
+      } else {
+        // ถ้าไม่มี ID (เริ่มรอบใหม่ หรือ ไม่เคยตรวจมาก่อน) ให้ Insert ใหม่
+        recordsToInsert.push(record)
       }
-      
-      record.attempt_number = st.attempt_number || 1
-      record.is_correction = record.attempt_number > 1
-
-      return record
     })
 
-    const { error } = await supabase
-      .from('inspections')
-      .upsert(payload)
+    try {
+      let hasError = false
+      let errorMessage = ''
 
-    setSaving(false)
+      // 1. อัปเดตข้อมูลของคนที่มีบันทึกอยู่แล้ว
+      if (recordsToUpdate.length > 0) {
+        const { error } = await supabase.from('inspections').upsert(recordsToUpdate)
+        if (error) { hasError = true; errorMessage = error.message }
+      }
 
-    if (error) {
-      Swal.fire({
-        icon: 'error',
-        title: 'บันทึกไม่สำเร็จ',
-        text: error.message,
-        confirmButtonColor: '#1d4ed8'
-      })
-    } else {
-      setHasUnsavedChanges(false)
-      Swal.fire({
-        icon: 'success',
-        title: 'บันทึกข้อมูลเรียบร้อย',
-        text: `บันทึกผลการตรวจห้อง ${selectedClass}/${selectedRoom} เรียบร้อยแล้ว`,
-        timer: 1300,
-        showConfirmButton: false
-      })
-      fetchStudentsAndInspections()
+      // 2. สร้างแถวใหม่สำหรับคนที่ไม่มี ID (รวมถึงคนที่เพิ่งกด "เริ่มรอบ 2")
+      if (recordsToInsert.length > 0 && !hasError) {
+        const { error } = await supabase.from('inspections').insert(recordsToInsert)
+        if (error) { hasError = true; errorMessage = error.message }
+      }
+
+      setSaving(false)
+
+      if (hasError) {
+        Swal.fire({
+          icon: 'error',
+          title: 'บันทึกไม่สำเร็จ',
+          text: errorMessage,
+          confirmButtonColor: '#1d4ed8'
+        })
+      } else {
+        setHasUnsavedChanges(false)
+        Swal.fire({
+          icon: 'success',
+          title: 'บันทึกข้อมูลเรียบร้อย',
+          text: `บันทึกผลการตรวจห้อง ${selectedClass}/${selectedRoom} เรียบร้อยแล้ว`,
+          timer: 1300,
+          showConfirmButton: false
+        })
+        fetchStudentsAndInspections()
+      }
+    } catch (err: any) {
+      setSaving(false)
+      Swal.fire('ข้อผิดพลาด', err.message, 'error')
     }
   }
 
