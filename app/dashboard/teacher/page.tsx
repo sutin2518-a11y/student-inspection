@@ -28,7 +28,9 @@ type StatusType = 'pass' | 'fail' | 'absent' | 'pending'
 type CategoryType = 'all' | 'hair' | 'nails' | 'uniform'
 
 interface StudentItemStatus {
-  inspection_id?: string // เพิ่ม field สำหรับเก็บ ID ของตาราง inspections
+  inspection_id?: string
+  inspection_date?: string
+  attempt_number?: number
   hair: StatusType
   nails: StatusType
   uniform: StatusType
@@ -48,25 +50,18 @@ export default function CompleteInspectionPage() {
   const supabase = createClient()
   const router = useRouter()
 
-  // State สำหรับการจัดการห้องเรียนและประเภทการตรวจ
   const [selectedClass, setSelectedClass] = useState('ม.1')
   const [selectedRoom, setSelectedRoom] = useState(1)
   const [selectedCategory, setSelectedCategory] = useState<CategoryType>('all')
   const [showRoomModal, setShowRoomModal] = useState(false)
   const [showBulkDropdown, setShowBulkDropdown] = useState(false)
-  
-  // State สำหรับเปิด-ปิดเมนูแฮมเบอร์เกอร์บนมือถือ
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false)
-  
-  // State สำหรับแถบย่อยอัจฉริยะการ์ดห้องบนมือถือ
   const [isMobileFilterOpen, setIsMobileFilterOpen] = useState(false)
 
-  // State สำหรับรอบปีการศึกษาและเดือน
   const [academicYear, setAcademicYear] = useState('2569')
   const [semester, setSemester] = useState('2')
   const [inspectionMonth, setInspectionMonth] = useState(new Date().toISOString().slice(0, 7))
 
-  // State ข้อมูลนักเรียน
   const [students, setStudents] = useState<Student[]>([])
   const [studentStatuses, setStudentStatuses] = useState<Record<string, StudentItemStatus>>({})
   
@@ -97,7 +92,6 @@ export default function CompleteInspectionPage() {
     fetchStudentsAndInspections()
   }, [selectedClass, selectedRoom, inspectionMonth])
 
-  // ดึงข้อมูลรายชื่อนักเรียนและประวัติผลการตรวจประจำเดือน
   const fetchStudentsAndInspections = async () => {
     setLoading(true)
     setHasUnsavedChanges(false)
@@ -123,23 +117,28 @@ export default function CompleteInspectionPage() {
     let currentStatuses: Record<string, StudentItemStatus> = {}
 
     if (studentIds.length > 0) {
+      // ดึงข้อมูลการตรวจล่าสุดของนักเรียนแต่ละคน
       const { data: inspectionData } = await supabase
         .from('inspections')
-        .select('id, student_id, hair_status, nails_status, uniform_status, status') // ดึง id ของ inspections มาด้วย
+        .select('id, student_id, hair_status, nails_status, uniform_status, status, inspection_date, attempt_number')
         .in('student_id', studentIds)
         .eq('inspection_month', inspectionMonth)
+        .order('created_at', { ascending: false }) // เรียงจากล่าสุดขึ้นก่อน
 
       if (inspectionData) {
         studentIds.forEach(id => {
-          const studentRecord = inspectionData.find(item => item.student_id === id)
-          if (studentRecord) {
+          // เนื่องจากเรียง desc, find ตัวแรกคือข้อมูลล่าสุด
+          const latestRecord = inspectionData.find(item => item.student_id === id)
+          if (latestRecord) {
             const normalize = (st?: string) => (st === 'waive' ? 'absent' : st || 'pending') as StatusType
 
             currentStatuses[id] = {
-              inspection_id: studentRecord.id, // เก็บ ID ไว้เพื่อใช้อัปเดต
-              hair: normalize(studentRecord.hair_status),
-              nails: normalize(studentRecord.nails_status),
-              uniform: normalize(studentRecord.uniform_status)
+              inspection_id: latestRecord.id,
+              inspection_date: latestRecord.inspection_date,
+              attempt_number: latestRecord.attempt_number || 1,
+              hair: normalize(latestRecord.hair_status),
+              nails: normalize(latestRecord.nails_status),
+              uniform: normalize(latestRecord.uniform_status)
             }
           }
         })
@@ -156,7 +155,6 @@ export default function CompleteInspectionPage() {
     setLoading(false)
   }
 
-  // ส่งออกเป็นไฟล์ Excel (.xlsx)
   const handleExportExcel = () => {
     setIsMobileMenuOpen(false)
     if (students.length === 0) {
@@ -173,7 +171,6 @@ export default function CompleteInspectionPage() {
 
     const excelRows = students.map((s, idx) => {
       const st = studentStatuses[s.id] || { hair: 'pending', nails: 'pending', uniform: 'pending' }
-
       let overall: StatusType = 'pass'
       if (st.hair === 'fail' || st.nails === 'fail' || st.uniform === 'fail') overall = 'fail'
       else if (st.hair === 'absent' || st.nails === 'absent' || st.uniform === 'absent') overall = 'absent'
@@ -184,6 +181,7 @@ export default function CompleteInspectionPage() {
         'รหัสนักเรียน': s.student_id || '',
         'ชื่อ-นามสกุล': s.full_name,
         'ชั้น/ห้อง': `${s.class_name}/${s.room}`,
+        'รอบการตรวจล่าสุด': st.attempt_number || 1,
         'ทรงผม': formatTextStatus(st.hair),
         'เล็บ': formatTextStatus(st.nails),
         'การแต่งกาย': formatTextStatus(st.uniform),
@@ -210,33 +208,27 @@ export default function CompleteInspectionPage() {
     setHasUnsavedChanges(true)
   }
 
-  // ฟังก์ชันกดวนเปลี่ยนสถานะบนมือถือ
   const handleCycleStatus = (studentId: string, category: 'hair' | 'nails' | 'uniform') => {
     const current = studentStatuses[studentId]?.[category] || 'pending'
     let next: StatusType = 'pass'
-
     if (current === 'pending') next = 'pass'
     else if (current === 'pass') next = 'fail'
     else if (current === 'fail') next = 'absent'
     else if (current === 'absent') next = 'pass'
-
     handleSetItemStatus(studentId, category, next)
   }
 
   const handleBulkSetStatus = (targetStatus: StatusType) => {
     setShowBulkDropdown(false)
     const updated = { ...studentStatuses }
-    
     students.forEach(s => {
       const current = updated[s.id] || { hair: 'pending', nails: 'pending', uniform: 'pending' }
       if (selectedCategory === 'all') {
-        // รักษา inspection_id เอาไว้เวลาเปลี่ยนสถานะรวดเดียว
         updated[s.id] = { ...current, hair: targetStatus, nails: targetStatus, uniform: targetStatus }
       } else {
         updated[s.id] = { ...current, [selectedCategory]: targetStatus }
       }
     })
-
     setStudentStatuses(updated)
     setHasUnsavedChanges(true)
   }
@@ -256,7 +248,6 @@ export default function CompleteInspectionPage() {
       else if (st.hair === 'absent' || st.nails === 'absent' || st.uniform === 'absent') overall = 'absent'
       else if (st.hair === 'pending' || st.nails === 'pending' || st.uniform === 'pending') overall = 'pending'
 
-      // สร้าง record สำหรับอัปเดต
       const record: any = {
         student_id: s.id,
         inspector_id: user?.id,
@@ -268,18 +259,32 @@ export default function CompleteInspectionPage() {
         inspection_date: today,
         inspection_month: inspectionMonth,
         academic_year: academicYear,
-        semester: semester
+        semester: semester,
+        is_resolved: overall === 'pass'
       }
 
-      // ถ้ามี ID เดิมจากฐานข้อมูล ให้แนบ ID กลับไปเพื่อบอกให้ Supabase อัปเดตทับข้อมูลเดิม
+      // เช็คว่าเป็นการตรวจซ้ำในวันเดียวกัน หรือมาตรวจแก้วันอื่น
       if (st.inspection_id) {
-        record.id = st.inspection_id
+        if (st.inspection_date === today) {
+          // วันเดียวกัน: อัปเดตข้อมูลทับ
+          record.id = st.inspection_id
+          record.attempt_number = st.attempt_number || 1
+          record.is_correction = record.attempt_number > 1
+        } else {
+          // คนละวัน (ตรวจแก้): บันทึกเป็นแถวใหม่ (ไม่ต้องใส่ id) และเพิ่มรอบ
+          record.attempt_number = (st.attempt_number || 1) + 1
+          record.is_correction = true
+        }
+      } else {
+        // ยังไม่เคยตรวจเดือนนี้
+        record.attempt_number = 1
+        record.is_correction = false
       }
 
       return record
     })
 
-    // ลบ { onConflict: ... } ออก เพื่อใช้ระบบอัปเดตอัตโนมัติตาม Primary Key ของ Supabase
+    // upsert ถ้ามี id จะ update, ถ้าไม่มี id จะ insert แถวใหม่
     const { error } = await supabase
       .from('inspections')
       .upsert(payload)
@@ -298,11 +303,11 @@ export default function CompleteInspectionPage() {
       Swal.fire({
         icon: 'success',
         title: 'บันทึกข้อมูลเรียบร้อย',
-        text: `บันทึกผลการตรวจประจำเดือน ${inspectionMonth} ห้อง ${selectedClass}/${selectedRoom} เรียบร้อยแล้ว`,
+        text: `บันทึกผลการตรวจห้อง ${selectedClass}/${selectedRoom} เรียบร้อยแล้ว`,
         timer: 1300,
         showConfirmButton: false
       })
-      fetchStudentsAndInspections()
+      fetchStudentsAndInspections() // โหลดข้อมูลมาใหม่เพื่อให้ได้ ID ล่าสุด
     }
   }
 
@@ -318,70 +323,33 @@ export default function CompleteInspectionPage() {
     return st.hair !== 'pending' || st.nails !== 'pending' || st.uniform !== 'pending'
   }).length
 
-  // Render ปุ่มเลือกสถานะแบบ Compact
   const renderItemControl = (studentId: string, catKey: 'hair' | 'nails' | 'uniform') => {
     const status = studentStatuses[studentId]?.[catKey] || 'pending'
-
     return (
       <div className="flex items-center justify-center py-0.5">
-        
-        {/* บน Desktop: แสดงปุ่ม 3 ปุ่มแบบเรียบหรู */}
         <div className="hidden md:flex items-center justify-center">
           <div className="inline-flex items-center gap-1 bg-gray-100 p-1 rounded-xl border border-gray-200">
-            <button 
-              onClick={() => handleSetItemStatus(studentId, catKey, 'pass')} 
-              className={`p-1.5 rounded-lg transition ${status === 'pass' ? 'bg-[#16a34a] text-white shadow-sm' : 'bg-white text-[#16a34a] border border-gray-200 hover:bg-emerald-50'}`}
-              title="ผ่าน"
-            >
-              <Check className="w-4 h-4 stroke-[3]" />
-            </button>
-            <button 
-              onClick={() => handleSetItemStatus(studentId, catKey, 'fail')} 
-              className={`p-1.5 rounded-lg transition ${status === 'fail' ? 'bg-[#dc2626] text-white shadow-sm' : 'bg-white text-[#dc2626] border border-gray-200 hover:bg-rose-50'}`}
-              title="ไม่ผ่าน"
-            >
-              <X className="w-4 h-4 stroke-[3]" />
-            </button>
-            <button 
-              onClick={() => handleSetItemStatus(studentId, catKey, 'absent')} 
-              className={`p-1.5 rounded-lg transition ${status === 'absent' ? 'bg-[#d97706] text-white shadow-sm' : 'bg-white text-[#d97706] border border-gray-200 hover:bg-amber-50'}`}
-              title="ขาดเรียน"
-            >
-              <UserX className="w-4 h-4 stroke-[2.5]" />
-            </button>
+            <button onClick={() => handleSetItemStatus(studentId, catKey, 'pass')} className={`p-1.5 rounded-lg transition ${status === 'pass' ? 'bg-[#16a34a] text-white shadow-sm' : 'bg-white text-[#16a34a] border border-gray-200 hover:bg-emerald-50'}`}><Check className="w-4 h-4 stroke-[3]" /></button>
+            <button onClick={() => handleSetItemStatus(studentId, catKey, 'fail')} className={`p-1.5 rounded-lg transition ${status === 'fail' ? 'bg-[#dc2626] text-white shadow-sm' : 'bg-white text-[#dc2626] border border-gray-200 hover:bg-rose-50'}`}><X className="w-4 h-4 stroke-[3]" /></button>
+            <button onClick={() => handleSetItemStatus(studentId, catKey, 'absent')} className={`p-1.5 rounded-lg transition ${status === 'absent' ? 'bg-[#d97706] text-white shadow-sm' : 'bg-white text-[#d97706] border border-gray-200 hover:bg-amber-50'}`}><UserX className="w-4 h-4 stroke-[2.5]" /></button>
           </div>
         </div>
-
-        {/* บน Mobile: แสดงปุ่มเดี่ยว กดวนสถานะ */}
-        <button
-          onClick={() => handleCycleStatus(studentId, catKey)}
-          className={`md:hidden px-3 py-1.5 rounded-xl font-bold text-xs flex items-center gap-1 shadow-sm active:scale-95 transition-all cursor-pointer ${
-            status === 'pass' ? 'bg-[#16a34a] text-white ring-2 ring-emerald-600/20' :
-            status === 'fail' ? 'bg-[#dc2626] text-white ring-2 ring-rose-600/20' :
-            status === 'absent' ? 'bg-[#d97706] text-white ring-2 ring-amber-600/20' :
-            'bg-gray-100 text-gray-700 border border-gray-300'
-          }`}
-          title="กดเพื่อวนเปลี่ยนสถานะ"
-        >
+        <button onClick={() => handleCycleStatus(studentId, catKey)} className={`md:hidden px-3 py-1.5 rounded-xl font-bold text-xs flex items-center gap-1 shadow-sm active:scale-95 transition-all cursor-pointer ${status === 'pass' ? 'bg-[#16a34a] text-white ring-2 ring-emerald-600/20' : status === 'fail' ? 'bg-[#dc2626] text-white ring-2 ring-rose-600/20' : status === 'absent' ? 'bg-[#d97706] text-white ring-2 ring-amber-600/20' : 'bg-gray-100 text-gray-700 border border-gray-300'}`}>
           {status === 'pass' && <><Check className="w-3.5 h-3.5 stroke-[3]" /><span>ผ่าน</span></>}
           {status === 'fail' && <><X className="w-3.5 h-3.5 stroke-[3]" /><span>ไม่ผ่าน</span></>}
           {status === 'absent' && <><UserX className="w-3.5 h-3.5 stroke-[2.5]" /><span>ขาด</span></>}
           {status === 'pending' && <><RotateCcw className="w-3.5 h-3.5 text-gray-500" /><span>รอตรวจ</span></>}
         </button>
-
       </div>
     )
   }
 
   return (
     <div className="min-h-screen bg-[#38bdf8]/20 pb-32 font-sans">
-      {/* Header */}
       <div className="max-w-6xl mx-auto pt-4 px-4">
         <header className="bg-[#1d4ed8] text-white px-6 py-4 rounded-2xl shadow-lg flex justify-between items-center relative">
           <div className="flex items-center gap-3">
-            <div className="bg-white/20 p-2 rounded-xl shrink-0">
-              <ShieldCheck className="w-7 h-7 text-white" />
-            </div>
+            <div className="bg-white/20 p-2 rounded-xl shrink-0"><ShieldCheck className="w-7 h-7 text-white" /></div>
             <div>
               <h1 className="text-lg md:text-2xl font-extrabold tracking-tight leading-snug">ระบบตรวจระเบียบนักเรียน</h1>
               <p className="text-xs text-blue-200">ปีการศึกษา {academicYear} ภาคเรียนที่ {semester}</p>
@@ -389,64 +357,16 @@ export default function CompleteInspectionPage() {
           </div>
           
           <div className="flex items-center gap-2" ref={mobileMenuRef}>
-            <button 
-              onClick={() => router.push('/dashboard/admin/stats')}
-              className="hidden md:flex items-center gap-1.5 bg-white/20 hover:bg-white/30 text-white px-3.5 py-1.5 rounded-lg text-sm font-bold transition"
-            >
-              <BarChart3 size={16} /> สถิติสะสม
-            </button>
-
-            <button 
-              onClick={handleLogout}
-              className="hidden md:flex items-center gap-1.5 text-white bg-white/10 hover:bg-white/20 px-3 py-1.5 rounded-lg text-sm font-medium transition"
-            >
-              <LogOut size={16} /> ออกจากระบบ
-            </button>
-
-            {/* ปุ่มแฮมเบอร์เกอร์บนมือถือ */}
-            <button 
-              onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
-              className="text-white hover:bg-white/10 p-2 rounded-lg transition active:scale-95 cursor-pointer"
-              aria-label="เปิดเมนูหลัก"
-            >
-              <Menu className="w-6 h-6" />
-            </button>
-
-            {/* เมนูลอยบนมือถือ (Mobile Drawer) */}
+            <button onClick={() => router.push('/dashboard/admin/stats')} className="hidden md:flex items-center gap-1.5 bg-white/20 hover:bg-white/30 text-white px-3.5 py-1.5 rounded-lg text-sm font-bold transition"><BarChart3 size={16} /> สถิติสะสม</button>
+            <button onClick={handleLogout} className="hidden md:flex items-center gap-1.5 text-white bg-white/10 hover:bg-white/20 px-3 py-1.5 rounded-lg text-sm font-medium transition"><LogOut size={16} /> ออกจากระบบ</button>
+            <button onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)} className="text-white hover:bg-white/10 p-2 rounded-lg transition active:scale-95 cursor-pointer md:hidden"><Menu className="w-6 h-6" /></button>
             {isMobileMenuOpen && (
               <div className="absolute right-4 top-16 w-56 bg-white text-gray-800 rounded-2xl shadow-2xl border border-gray-100 py-2 z-50 animate-in fade-in zoom-in-95 duration-150">
-                <div className="px-4 py-2 border-b border-gray-100 font-extrabold text-xs text-blue-700 uppercase tracking-wider">
-                  เมนูหลัก
-                </div>
-
-                <button
-                  onClick={() => {
-                    setIsMobileMenuOpen(false)
-                    router.push('/dashboard/admin/stats')
-                  }}
-                  className="w-full text-left px-4 py-3 text-sm font-bold text-gray-700 hover:bg-blue-50 flex items-center gap-3 transition"
-                >
-                  <BarChart3 className="w-4 h-4 text-blue-600" />
-                  <span>สถิติสะสม</span>
-                </button>
-
-                <button
-                  onClick={handleExportExcel}
-                  className="w-full text-left px-4 py-3 text-sm font-bold text-emerald-700 hover:bg-emerald-50 flex items-center gap-3 transition"
-                >
-                  <Download className="w-4 h-4 text-emerald-600" />
-                  <span>ส่งออก Excel</span>
-                </button>
-
+                <div className="px-4 py-2 border-b border-gray-100 font-extrabold text-xs text-blue-700 uppercase tracking-wider">เมนูหลัก</div>
+                <button onClick={() => { setIsMobileMenuOpen(false); router.push('/dashboard/admin/stats') }} className="w-full text-left px-4 py-3 text-sm font-bold text-gray-700 hover:bg-blue-50 flex items-center gap-3 transition"><BarChart3 className="w-4 h-4 text-blue-600" /><span>สถิติสะสม</span></button>
+                <button onClick={handleExportExcel} className="w-full text-left px-4 py-3 text-sm font-bold text-emerald-700 hover:bg-emerald-50 flex items-center gap-3 transition"><Download className="w-4 h-4 text-emerald-600" /><span>ส่งออก Excel</span></button>
                 <div className="border-t border-gray-100 my-1"></div>
-
-                <button
-                  onClick={handleLogout}
-                  className="w-full text-left px-4 py-3 text-sm font-bold text-rose-600 hover:bg-rose-50 flex items-center gap-3 transition"
-                >
-                  <LogOut className="w-4 h-4 text-rose-600" />
-                  <span>ออกจากระบบ</span>
-                </button>
+                <button onClick={handleLogout} className="w-full text-left px-4 py-3 text-sm font-bold text-rose-600 hover:bg-rose-50 flex items-center gap-3 transition"><LogOut className="w-4 h-4 text-rose-600" /><span>ออกจากระบบ</span></button>
               </div>
             )}
           </div>
@@ -454,79 +374,36 @@ export default function CompleteInspectionPage() {
       </div>
 
       <main className="max-w-6xl mx-auto px-4 mt-4 space-y-4">
-        
-        {/* การ์ดจัดการห้อง + ตัวควบคุมหลัก */}
         <div className="bg-white rounded-2xl p-3 md:p-4 shadow-sm border border-gray-100 transition-all">
-          
-          {/* 1. แถบสรุปด่วนสำหรับหน้าจอมือถือ (Compact Mobile View) */}
           <div className="flex md:hidden items-center justify-between gap-2">
             <div className="flex items-center gap-1.5 overflow-hidden">
               <Users className="w-4 h-4 text-blue-600 shrink-0" />
-              <span className="font-extrabold text-sm text-gray-800 shrink-0">
-                {selectedClass}/{selectedRoom}
-              </span>
+              <span className="font-extrabold text-sm text-gray-800 shrink-0">{selectedClass}/{selectedRoom}</span>
               <span className="text-xs text-gray-500 truncate">({inspectedCount}/{students.length})</span>
             </div>
-
             <div className="flex items-center gap-1.5 shrink-0">
-              <button
-                onClick={() => setIsMobileFilterOpen(!isMobileFilterOpen)}
-                className={`p-1.5 rounded-xl border text-xs font-bold transition flex items-center gap-1 ${
-                  isMobileFilterOpen 
-                    ? 'bg-blue-50 text-blue-700 border-blue-300' 
-                    : 'bg-gray-50 text-gray-700 border-gray-200'
-                }`}
-              >
+              <button onClick={() => setIsMobileFilterOpen(!isMobileFilterOpen)} className={`p-1.5 rounded-xl border text-xs font-bold transition flex items-center gap-1 ${isMobileFilterOpen ? 'bg-blue-50 text-blue-700 border-blue-300' : 'bg-gray-50 text-gray-700 border-gray-200'}`}>
                 <SlidersHorizontal className="w-4 h-4" />
                 <ChevronDown className={`w-3.5 h-3.5 transition-transform duration-200 ${isMobileFilterOpen ? 'rotate-180' : ''}`} />
               </button>
             </div>
           </div>
 
-          {/* 2. เมนูย่อย (แสดงปกติบน Desktop / ย่อพับเก็บได้บน Mobile) */}
           <div className={`mt-3 pt-3 border-t border-gray-100 md:border-none md:mt-0 md:pt-0 ${isMobileFilterOpen ? 'block' : 'hidden md:flex'} md:flex-wrap md:items-center md:justify-between gap-3`}>
-            
             <div className="flex flex-wrap items-center gap-2 md:gap-3">
               <div className="hidden md:flex items-center gap-2 text-gray-800 font-bold text-base md:text-lg">
                 <Users className="w-5 h-5 text-blue-600" />
                 <span>ห้อง: <span className="text-blue-600">{selectedClass}/{selectedRoom}</span></span>
-                <span className="text-sm font-normal text-gray-500">
-                  ({inspectedCount} / {students.length} คน)
-                </span>
+                <span className="text-sm font-normal text-gray-500">({inspectedCount} / {students.length} คน)</span>
               </div>
-
-  <div 
-  className="flex items-center gap-1.5 bg-gray-50 border border-gray-200 px-3 py-1.5 rounded-xl text-xs font-bold text-gray-700 w-full sm:w-auto cursor-pointer hover:bg-gray-100 transition-colors"
-  onClick={(e) => {
-    const input = e.currentTarget.querySelector('input');
-    if (input && 'showPicker' in input) {
-      input.showPicker();
-    }
-  }}
->
-  <Calendar className="w-3.5 h-3.5 text-blue-600 shrink-0" />
-  
-  <span className="text-blue-800 shrink-0 select-none">
-    {new Date(inspectionMonth + '-01').toLocaleDateString('th-TH', { 
-      month: 'long', 
-      year: 'numeric' 
-    })}
-  </span>
-
-  <input
-    type="month"
-    value={inspectionMonth}
-    onChange={(e) => setInspectionMonth(e.target.value)}
-    className="w-0 h-0 opacity-0 pointer-events-none absolute"
-  />
-</div>
+              <div className="flex items-center gap-1.5 bg-gray-50 border border-gray-200 px-3 py-1.5 rounded-xl text-xs font-bold text-gray-700 w-full sm:w-auto cursor-pointer hover:bg-gray-100 transition-colors" onClick={(e) => { const input = e.currentTarget.querySelector('input'); if (input && 'showPicker' in input) { (input as any).showPicker(); } }}>
+                <Calendar className="w-3.5 h-3.5 text-blue-600 shrink-0" />
+                <span className="text-blue-800 shrink-0 select-none">{new Date(inspectionMonth + '-01').toLocaleDateString('th-TH', { month: 'long', year: 'numeric' })}</span>
+                <input type="month" value={inspectionMonth} onChange={(e) => setInspectionMonth(e.target.value)} className="w-0 h-0 opacity-0 pointer-events-none absolute" />
+              </div>
               <div className="relative w-full sm:w-auto">
-                <select
-                  value={selectedCategory}
-                  onChange={(e) => setSelectedCategory(e.target.value as CategoryType)}
-                  className="w-full appearance-none bg-blue-50 hover:bg-blue-100 text-blue-800 font-bold text-xs md:text-sm px-3.5 py-1.5 pr-8 rounded-xl border border-blue-200 outline-none cursor-pointer transition"
-                >
-                  <option value="all">📋 รายการ: ทุกรายการ </option>
+                <select value={selectedCategory} onChange={(e) => setSelectedCategory(e.target.value as CategoryType)} className="w-full appearance-none bg-blue-50 hover:bg-blue-100 text-blue-800 font-bold text-xs md:text-sm px-3.5 py-1.5 pr-8 rounded-xl border border-blue-200 outline-none cursor-pointer transition">
+                  <option value="all">📋 รายการ: ทุกรายการ</option>
                   <option value="hair">✂️ รายการ: ทรงผม</option>
                   <option value="nails">✨ รายการ: เล็บ</option>
                   <option value="uniform">👔 รายการ: การแต่งกาย</option>
@@ -537,15 +414,10 @@ export default function CompleteInspectionPage() {
 
             <div className="flex flex-wrap items-center gap-2 mt-2 md:mt-0">
               <div className="relative flex-1 sm:flex-none" ref={dropdownRef}>
-                <button
-                  onClick={() => setShowBulkDropdown(!showBulkDropdown)}
-                  disabled={saving || students.length === 0}
-                  className="w-full flex items-center justify-center gap-2 bg-[#16a34a] hover:bg-[#15803d] text-white px-3.5 py-1.5 md:px-4 md:py-2 rounded-xl text-xs md:text-sm font-bold shadow-sm transition active:scale-95 disabled:opacity-50"
-                >
+                <button onClick={() => setShowBulkDropdown(!showBulkDropdown)} disabled={saving || students.length === 0} className="w-full flex items-center justify-center gap-2 bg-[#16a34a] hover:bg-[#15803d] text-white px-3.5 py-1.5 md:px-4 md:py-2 rounded-xl text-xs md:text-sm font-bold shadow-sm transition active:scale-95 disabled:opacity-50">
                   <span>เลือกการประเมิน</span>
                   <ChevronDown className={`w-4 h-4 transition-transform ${showBulkDropdown ? 'rotate-180' : ''}`} />
                 </button>
-
                 {showBulkDropdown && (
                   <div className="absolute right-0 mt-2 w-56 bg-white rounded-xl shadow-xl border border-gray-100 py-1.5 z-30">
                     <button onClick={() => handleBulkSetStatus('pass')} className="w-full text-left px-4 py-2 text-xs md:text-sm font-semibold text-emerald-700 hover:bg-emerald-50 flex items-center gap-2"><Check className="w-4 h-4 text-emerald-600 stroke-[3]" />ผ่านทั้งหมด</button>
@@ -556,29 +428,16 @@ export default function CompleteInspectionPage() {
                   </div>
                 )}
               </div>
-
-              <button
-                onClick={() => setShowRoomModal(true)}
-                className="flex-1 sm:flex-none flex items-center justify-center gap-1 bg-gray-50 hover:bg-gray-100 text-gray-700 border border-gray-300 px-3 py-1.5 md:px-3.5 md:py-2 rounded-xl text-xs md:text-sm font-bold transition active:scale-95"
-              >
+              <button onClick={() => setShowRoomModal(true)} className="flex-1 sm:flex-none flex items-center justify-center gap-1 bg-gray-50 hover:bg-gray-100 text-gray-700 border border-gray-300 px-3 py-1.5 md:px-3.5 md:py-2 rounded-xl text-xs md:text-sm font-bold transition active:scale-95">
                 <ArrowLeft className="w-3.5 h-3.5" /> เปลี่ยนห้อง
               </button>
-
-              <button
-                onClick={handleExportExcel}
-                disabled={loading || students.length === 0}
-                className="hidden md:flex ml-auto items-center gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 rounded-xl text-sm font-bold shadow-md transition active:scale-95 disabled:opacity-50 ring-2 ring-emerald-600/20"
-              >
-                <Download className="w-4 h-4" />
-                <span>ส่งออก Excel</span>
+              <button onClick={handleExportExcel} disabled={loading || students.length === 0} className="hidden md:flex ml-auto items-center gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 rounded-xl text-sm font-bold shadow-md transition active:scale-95 disabled:opacity-50 ring-2 ring-emerald-600/20">
+                <Download className="w-4 h-4" /><span>ส่งออก Excel</span>
               </button>
-
             </div>
           </div>
-
         </div>
 
-        {/* ตารางแสดงรายชื่อนักเรียน */}
         <div className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden">
           {loading ? (
             <div className="p-12 text-center text-gray-400">กำลังดึงข้อมูลรายชื่อนักเรียน...</div>
@@ -591,7 +450,6 @@ export default function CompleteInspectionPage() {
                   <tr className="bg-gray-50 text-gray-800 font-bold text-xs md:text-sm border-b border-gray-200">
                     <th className="py-3 px-2 md:py-3.5 md:px-4 text-center w-12 md:w-16">เลขที่</th>
                     <th className="py-3 px-3 md:py-3.5 md:px-4 min-w-[140px] md:min-w-[180px]">ชื่อ-สกุล</th>
-                    
                     {selectedCategory === 'all' ? (
                       <>
                         <th className="py-3 px-2 md:py-3.5 md:px-4 text-center min-w-[90px] md:min-w-[140px]">✂️ ทรงผม</th>
@@ -608,83 +466,52 @@ export default function CompleteInspectionPage() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100 text-xs md:text-sm">
-                  {students.map((student, idx) => {
-                    const isEven = idx % 2 === 1
-
-                    return (
-                      <tr key={student.id} className={`transition hover:bg-blue-50/40 ${isEven ? 'bg-gray-50/60' : 'bg-white'}`}>
-                        <td className="py-2.5 px-2 md:py-3 md:px-4 text-center font-bold text-gray-800">
-                          {student.number || idx + 1}
-                        </td>
-
-                        <td className="py-2.5 px-3 md:py-3 md:px-4">
-                          <div className="font-bold text-gray-900 text-sm md:text-base">{student.full_name}</div>
-                          <div className="text-[10px] md:text-xs text-gray-500 mt-0.5 font-medium">
-                            {student.student_id || '-'} | {student.gender || (student.full_name.startsWith('เด็กหญิง') || student.full_name.startsWith('นางสาว') ? 'หญิง' : 'ชาย')}
-                          </div>
-                        </td>
-
-                        {selectedCategory === 'all' ? (
-                          <>
-                            <td className="py-2.5 px-2 md:py-3 md:px-4 text-center">{renderItemControl(student.id, 'hair')}</td>
-                            <td className="py-2.5 px-2 md:py-3 md:px-4 text-center">{renderItemControl(student.id, 'nails')}</td>
-                            <td className="py-2.5 px-2 md:py-3 md:px-4 text-center">{renderItemControl(student.id, 'uniform')}</td>
-                            <td className="py-2.5 px-2 md:py-3 md:px-4 text-center">
-                              <button 
-                                onClick={() => Swal.fire({ title: 'ระบบตรวจด้วย AI', text: `กำลังเตรียมเปิดกล้องสำหรับ ${student.full_name}`, icon: 'info' })} 
-                                className="inline-flex items-center gap-1 bg-black text-white px-2 py-1 md:px-2.5 md:py-1.5 rounded-lg text-[10px] md:text-xs font-bold hover:bg-gray-800 transition"
-                              >
-                                <Camera className="w-3 h-3 md:w-3.5 md:h-3.5" />
-                                <span>AI</span>
-                              </button>
-                            </td>
-                          </>
-                        ) : (
-                          <>
-                            <td className="py-2.5 px-4 md:py-3 md:px-6 text-center">
-                              {studentStatuses[student.id]?.[selectedCategory] === 'pass' && <span className="inline-block bg-[#16a34a] text-white text-xs px-2.5 py-0.5 rounded-lg font-bold shadow-sm">ผ่าน</span>}
-                              {studentStatuses[student.id]?.[selectedCategory] === 'fail' && <span className="inline-block bg-[#dc2626] text-white text-xs px-2.5 py-0.5 rounded-lg font-bold shadow-sm">ไม่ผ่าน</span>}
-                              {studentStatuses[student.id]?.[selectedCategory] === 'absent' && <span className="inline-block bg-[#d97706] text-white text-xs px-2.5 py-0.5 rounded-lg font-bold shadow-sm">ขาด</span>}
-                              {(!studentStatuses[student.id]?.[selectedCategory] || studentStatuses[student.id]?.[selectedCategory] === 'pending') && <span className="inline-block bg-gray-200 text-gray-600 text-xs px-2.5 py-0.5 rounded-lg font-bold">รอตรวจ</span>}
-                            </td>
-
-                            <td className="py-2.5 px-4 md:py-3 md:px-6 text-center">
-                              <div className="inline-flex items-center gap-1 bg-gray-100 p-1 rounded-xl border border-gray-200">
-                                <button 
-                                  onClick={() => handleSetItemStatus(student.id, selectedCategory, 'pass')} 
-                                  className={`p-1.5 rounded-lg transition ${studentStatuses[student.id]?.[selectedCategory] === 'pass' ? 'bg-[#16a34a] text-white shadow-sm' : 'bg-white text-[#16a34a] border border-gray-200 hover:bg-emerald-50'}`}
-                                  title="ผ่าน"
-                                >
-                                  <Check className="w-3.5 h-3.5 stroke-[3]" />
-                                </button>
-                                <button 
-                                  onClick={() => handleSetItemStatus(student.id, selectedCategory, 'fail')} 
-                                  className={`p-1.5 rounded-lg transition ${studentStatuses[student.id]?.[selectedCategory] === 'fail' ? 'bg-[#dc2626] text-white shadow-sm' : 'bg-white text-[#dc2626] border border-gray-200 hover:bg-rose-50'}`}
-                                  title="ไม่ผ่าน"
-                                >
-                                  <X className="w-3.5 h-3.5 stroke-[3]" />
-                                </button>
-                                <button 
-                                  onClick={() => handleSetItemStatus(student.id, selectedCategory, 'absent')} 
-                                  className={`p-1.5 rounded-lg transition ${studentStatuses[student.id]?.[selectedCategory] === 'absent' ? 'bg-[#d97706] text-white shadow-sm' : 'bg-white text-[#d97706] border border-gray-200 hover:bg-amber-50'}`}
-                                  title="ขาดเรียน"
-                                >
-                                  <UserX className="w-3.5 h-3.5 stroke-[2.5]" />
-                                </button>
-                                <button 
-                                  onClick={() => Swal.fire({ title: 'ระบบตรวจด้วย AI', text: `กำลังเตรียมเปิดกล้องสำหรับ ${student.full_name}`, icon: 'info' })} 
-                                  className="flex items-center gap-1 bg-black text-white px-2 py-1.5 rounded-lg text-xs font-bold hover:bg-gray-800 transition"
-                                >
-                                  <Camera className="w-3.5 h-3.5" />
-                                  <span>AI</span>
-                                </button>
-                              </div>
-                            </td>
-                          </>
-                        )}
-                      </tr>
-                    )
-                  })}
+                  {students.map((student, idx) => (
+                    <tr key={student.id} className={`transition hover:bg-blue-50/40 ${idx % 2 === 1 ? 'bg-gray-50/60' : 'bg-white'}`}>
+                      <td className="py-2.5 px-2 md:py-3 md:px-4 text-center font-bold text-gray-800">{student.number || idx + 1}</td>
+                      <td className="py-2.5 px-3 md:py-3 md:px-4">
+                        <div className="font-bold text-gray-900 text-sm md:text-base flex items-center gap-2">
+                          {student.full_name}
+                          {/* แสดง Badge ถ้ามีการตรวจแก้มากกว่า 1 ครั้ง */}
+                          {(studentStatuses[student.id]?.attempt_number || 1) > 1 && (
+                            <span className="text-[10px] bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded-md font-semibold">
+                              แก้รอบ {(studentStatuses[student.id]?.attempt_number)}
+                            </span>
+                          )}
+                        </div>
+                        <div className="text-[10px] md:text-xs text-gray-500 mt-0.5 font-medium">
+                          {student.student_id || '-'} | {student.gender || (student.full_name.startsWith('เด็กหญิง') || student.full_name.startsWith('นางสาว') ? 'หญิง' : 'ชาย')}
+                        </div>
+                      </td>
+                      {selectedCategory === 'all' ? (
+                        <>
+                          <td className="py-2.5 px-2 md:py-3 md:px-4 text-center">{renderItemControl(student.id, 'hair')}</td>
+                          <td className="py-2.5 px-2 md:py-3 md:px-4 text-center">{renderItemControl(student.id, 'nails')}</td>
+                          <td className="py-2.5 px-2 md:py-3 md:px-4 text-center">{renderItemControl(student.id, 'uniform')}</td>
+                          <td className="py-2.5 px-2 md:py-3 md:px-4 text-center">
+                            <button onClick={() => Swal.fire({ title: 'ระบบ AI', text: `กล้องสำหรับ ${student.full_name}`, icon: 'info' })} className="inline-flex items-center gap-1 bg-black text-white px-2 py-1 md:px-2.5 md:py-1.5 rounded-lg text-[10px] md:text-xs font-bold hover:bg-gray-800 transition"><Camera className="w-3 h-3 md:w-3.5 md:h-3.5" /><span>AI</span></button>
+                          </td>
+                        </>
+                      ) : (
+                        <>
+                          <td className="py-2.5 px-4 md:py-3 md:px-6 text-center">
+                            {studentStatuses[student.id]?.[selectedCategory] === 'pass' && <span className="inline-block bg-[#16a34a] text-white text-xs px-2.5 py-0.5 rounded-lg font-bold shadow-sm">ผ่าน</span>}
+                            {studentStatuses[student.id]?.[selectedCategory] === 'fail' && <span className="inline-block bg-[#dc2626] text-white text-xs px-2.5 py-0.5 rounded-lg font-bold shadow-sm">ไม่ผ่าน</span>}
+                            {studentStatuses[student.id]?.[selectedCategory] === 'absent' && <span className="inline-block bg-[#d97706] text-white text-xs px-2.5 py-0.5 rounded-lg font-bold shadow-sm">ขาด</span>}
+                            {(!studentStatuses[student.id]?.[selectedCategory] || studentStatuses[student.id]?.[selectedCategory] === 'pending') && <span className="inline-block bg-gray-200 text-gray-600 text-xs px-2.5 py-0.5 rounded-lg font-bold">รอตรวจ</span>}
+                          </td>
+                          <td className="py-2.5 px-4 md:py-3 md:px-6 text-center">
+                            <div className="inline-flex items-center gap-1 bg-gray-100 p-1 rounded-xl border border-gray-200">
+                              <button onClick={() => handleSetItemStatus(student.id, selectedCategory, 'pass')} className={`p-1.5 rounded-lg transition ${studentStatuses[student.id]?.[selectedCategory] === 'pass' ? 'bg-[#16a34a] text-white shadow-sm' : 'bg-white text-[#16a34a] border border-gray-200 hover:bg-emerald-50'}`}><Check className="w-3.5 h-3.5 stroke-[3]" /></button>
+                              <button onClick={() => handleSetItemStatus(student.id, selectedCategory, 'fail')} className={`p-1.5 rounded-lg transition ${studentStatuses[student.id]?.[selectedCategory] === 'fail' ? 'bg-[#dc2626] text-white shadow-sm' : 'bg-white text-[#dc2626] border border-gray-200 hover:bg-rose-50'}`}><X className="w-3.5 h-3.5 stroke-[3]" /></button>
+                              <button onClick={() => handleSetItemStatus(student.id, selectedCategory, 'absent')} className={`p-1.5 rounded-lg transition ${studentStatuses[student.id]?.[selectedCategory] === 'absent' ? 'bg-[#d97706] text-white shadow-sm' : 'bg-white text-[#d97706] border border-gray-200 hover:bg-amber-50'}`}><UserX className="w-3.5 h-3.5 stroke-[2.5]" /></button>
+                              <button onClick={() => Swal.fire({ title: 'ระบบ AI', text: `กล้องสำหรับ ${student.full_name}`, icon: 'info' })} className="flex items-center gap-1 bg-black text-white px-2 py-1.5 rounded-lg text-xs font-bold hover:bg-gray-800 transition"><Camera className="w-3.5 h-3.5" /><span>AI</span></button>
+                            </div>
+                          </td>
+                        </>
+                      )}
+                    </tr>
+                  ))}
                 </tbody>
               </table>
             </div>
@@ -692,40 +519,22 @@ export default function CompleteInspectionPage() {
         </div>
       </main>
 
-      {/* 🟢 แถบบันทึกข้อมูลลอยติดด้านล่างเสมอ (Sticky Floating Save Bar) */}
       <div className="fixed bottom-4 inset-x-4 max-w-lg mx-auto z-40 transition-all">
         <div className="bg-white/95 backdrop-blur-md px-5 py-3 rounded-2xl shadow-2xl border border-blue-100 flex items-center justify-between gap-3 ring-1 ring-black/5">
           <div className="flex flex-col">
-            <span className="text-xs font-bold text-gray-600">
-              ห้อง {selectedClass}/{selectedRoom} ({inspectedCount}/{students.length} คน)
-            </span>
+            <span className="text-xs font-bold text-gray-600">ห้อง {selectedClass}/{selectedRoom} ({inspectedCount}/{students.length} คน)</span>
             {hasUnsavedChanges ? (
-              <span className="text-[11px] font-extrabold text-amber-600 flex items-center gap-1 animate-pulse">
-                • มีข้อมูลใหม่ยังไม่ได้บันทึก
-              </span>
+              <span className="text-[11px] font-extrabold text-amber-600 flex items-center gap-1 animate-pulse">• มีข้อมูลใหม่ยังไม่ได้บันทึก</span>
             ) : (
-              <span className="text-[11px] font-semibold text-emerald-600">
-                ✓ บันทึกข้อมูลล่าสุดแล้ว
-              </span>
+              <span className="text-[11px] font-semibold text-emerald-600">✓ บันทึกข้อมูลล่าสุดแล้ว</span>
             )}
           </div>
-
-          <button
-            onClick={handleSaveAll}
-            disabled={saving || students.length === 0}
-            className={`flex items-center gap-2 px-5 py-2.5 rounded-xl text-xs md:text-sm font-extrabold text-white shadow-lg transition active:scale-95 disabled:opacity-50 cursor-pointer ${
-              hasUnsavedChanges 
-                ? 'bg-blue-600 hover:bg-blue-700 ring-4 ring-blue-300/50 animate-bounce' 
-                : 'bg-blue-600 hover:bg-blue-700'
-            }`}
-          >
-            <Save className="w-4 h-4" />
-            <span>{saving ? 'กำลังบันทึก...' : 'บันทึกข้อมูล'}</span>
+          <button onClick={handleSaveAll} disabled={saving || students.length === 0} className={`flex items-center gap-2 px-5 py-2.5 rounded-xl text-xs md:text-sm font-extrabold text-white shadow-lg transition active:scale-95 disabled:opacity-50 cursor-pointer ${hasUnsavedChanges ? 'bg-blue-600 hover:bg-blue-700 ring-4 ring-blue-300/50 animate-bounce' : 'bg-blue-600 hover:bg-blue-700'}`}>
+            <Save className="w-4 h-4" /><span>{saving ? 'กำลังบันทึก...' : 'บันทึกข้อมูล'}</span>
           </button>
         </div>
       </div>
 
-      {/* Modal เลือกห้อง */}
       {showRoomModal && (
         <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4 backdrop-blur-sm">
           <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-xl space-y-5">
@@ -734,17 +543,13 @@ export default function CompleteInspectionPage() {
               <div>
                 <label className="block text-xs font-semibold text-gray-500 mb-1.5">ระดับชั้น</label>
                 <div className="grid grid-cols-3 gap-2">
-                  {classes.map(c => (
-                    <button key={c} onClick={() => setSelectedClass(c)} className={`py-2 text-sm font-semibold rounded-lg border ${selectedClass === c ? 'bg-blue-600 text-white' : 'bg-gray-50 text-gray-700'}`}>{c}</button>
-                  ))}
+                  {classes.map(c => <button key={c} onClick={() => setSelectedClass(c)} className={`py-2 text-sm font-semibold rounded-lg border ${selectedClass === c ? 'bg-blue-600 text-white' : 'bg-gray-50 text-gray-700'}`}>{c}</button>)}
                 </div>
               </div>
               <div>
                 <label className="block text-xs font-semibold text-gray-500 mb-1.5">ห้องเรียน</label>
                 <div className="grid grid-cols-5 gap-2 max-h-40 overflow-y-auto p-1">
-                  {rooms.map(r => (
-                    <button key={r} onClick={() => setSelectedRoom(r)} className={`py-2 text-sm font-semibold rounded-lg border ${selectedRoom === r ? 'bg-blue-600 text-white' : 'bg-gray-50 text-gray-700'}`}>{r}</button>
-                  ))}
+                  {rooms.map(r => <button key={r} onClick={() => setSelectedRoom(r)} className={`py-2 text-sm font-semibold rounded-lg border ${selectedRoom === r ? 'bg-blue-600 text-white' : 'bg-gray-50 text-gray-700'}`}>{r}</button>)}
                 </div>
               </div>
             </div>
