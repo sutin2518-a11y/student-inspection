@@ -1,313 +1,317 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { useRouter } from 'next/navigation'
 import { createClient } from '@/utils/supabase/client'
+import {
+  PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, Legend, ResponsiveContainer
+} from 'recharts'
+import { PieChart as PieChartIcon, Table as TableIcon, FileSpreadsheet } from 'lucide-react'
 import * as XLSX from 'xlsx'
-import Swal from 'sweetalert2'
-import { 
-  ArrowLeft, 
-  BarChart3, 
-  Calendar, 
-  Download, 
-  AlertTriangle, 
-  CheckCircle2, 
-  RefreshCcw,
-  Users,
-  Filter
-} from 'lucide-react'
 
-// สมมติโครงสร้างข้อมูล (ปรับให้ตรงกับ Database ของคุณ)
-interface StudentStat {
+interface Student {
   id: string
-  student_id: string
-  full_name: string
   class_name: string
   room: number
-  number: number
-  failed_first_round: number
-  correction_attempts: number
-  current_status: 'pass' | 'fail' | 'pending'
-  is_at_risk: boolean
 }
 
-export default function StatsPage() {
-  const router = useRouter()
+interface Inspection {
+  student_id: string
+  status: string
+  attempt_number: number
+}
+
+export default function DashboardStatsPage() {
   const supabase = createClient()
-
-  // State ตัวกรองเวลา
-  const [academicYear, setAcademicYear] = useState('2569')
-  const [semester, setSemester] = useState('2')
-  const [inspectionMonth, setInspectionMonth] = useState('2026-11')
-
-  // State ตัวกรองห้องเรียน
-  const [selectedClass, setSelectedClass] = useState<string>('all')
-  const [selectedRoom, setSelectedRoom] = useState<string>('all')
-
   const [loading, setLoading] = useState(true)
-  const [statsData, setStatsData] = useState<StudentStat[]>([])
-
-  const classes = ['ม.1', 'ม.2', 'ม.3', 'ม.4', 'ม.5', 'ม.6']
-  const rooms = Array.from({ length: 12 }, (_, i) => i + 1)
+  
+  const [students, setStudents] = useState<Student[]>([])
+  const [inspections, setInspections] = useState<Record<string, string>>({})
+  
+  const [filterMonth, setFilterMonth] = useState(new Date().toISOString().slice(0, 7))
+  const [filterType, setFilterType] = useState('all')
 
   useEffect(() => {
-    fetchStats()
-  }, [academicYear, semester, inspectionMonth, selectedClass, selectedRoom])
+    fetchDashboardData()
+  }, [filterMonth])
 
-  const fetchStats = async () => {
+  const fetchDashboardData = async () => {
     setLoading(true)
-    // ตรงนี้คือตัวอย่างการดึงข้อมูลและจำลอง (Mock) ข้อมูลสถิติ
-    // ในการใช้งานจริง ให้เปลี่ยนเป็นการดึงจาก Supabase View หรือ Table สถิติของคุณ
     
-    // จำลองข้อมูลเพื่อแสดงผล
-    setTimeout(() => {
-      const mockData: StudentStat[] = []
-      setStatsData(mockData)
-      setLoading(false)
-    }, 500)
+    // 1. ดึงข้อมูลนักเรียนทั้งหมด
+    const { data: studentsData } = await supabase
+      .from('profiles')
+      .select('id, class_name, room')
+      .eq('role', 'student')
+      
+    setStudents(studentsData || [])
+
+    // 2. ดึงข้อมูลการตรวจของเดือนที่เลือก
+    const { data: inspectionsData } = await supabase
+      .from('inspections')
+      .select('student_id, status, attempt_number')
+      .eq('inspection_month', filterMonth)
+
+    // 3. กรองเอาเฉพาะ "รอบล่าสุด" ของนักเรียนแต่ละคน
+    const latestStatus: Record<string, any> = {}
+    if (inspectionsData) {
+      inspectionsData.forEach((record: Inspection) => {
+        const current = latestStatus[record.student_id]
+        if (!current || current.attempt_number < record.attempt_number) {
+          latestStatus[record.student_id] = record
+        }
+      })
+    }
+
+    // แมปสถานะเป็น Key-Value ง่ายๆ
+    const statusMap: Record<string, string> = {}
+    Object.keys(latestStatus).forEach(key => {
+      statusMap[key] = latestStatus[key].status
+    })
+
+    setInspections(statusMap)
+    setLoading(false)
   }
 
-  // คำนวณข้อมูลสรุป
-  const filteredStats = statsData.filter(s => 
-    (selectedClass === 'all' || s.class_name === selectedClass) &&
-    (selectedRoom === 'all' || s.room.toString() === selectedRoom)
-  )
+  // --- คำนวณสถิติ ---
+  const totalStudents = students.length
+  let totalPass = 0
+  let totalFail = 0
+  let totalAbsent = 0
+  let totalPending = 0
+
+  students.forEach(s => {
+    const status = inspections[s.id]
+    if (status === 'pass') totalPass++
+    else if (status === 'fail') totalFail++
+    else if (status === 'waive' || status === 'absent') totalAbsent++
+    else totalPending++
+  })
+
+  const donutData = [
+    { name: 'ผ่าน', value: totalPass, color: '#16a34a' },
+    { name: 'ไม่ผ่าน', value: totalFail, color: '#dc2626' },
+    { name: 'ขาดตรวจ', value: totalAbsent, color: '#d97706' },
+    { name: 'ยังไม่ตรวจ', value: totalPending, color: '#e5e7eb' },
+  ]
+
+  // --- ข้อมูลกราฟแท่ง (แยก ม.1 - ม.6) ---
+  const classesList = ['ม.1', 'ม.2', 'ม.3', 'ม.4', 'ม.5', 'ม.6']
+  const barChartData = classesList.map(c => {
+    const classStudents = students.filter(s => s.class_name === c)
+    let pass = 0, fail = 0, absent = 0, pending = 0
+    
+    classStudents.forEach(s => {
+      const status = inspections[s.id]
+      if (status === 'pass') pass++
+      else if (status === 'fail') fail++
+      else if (status === 'waive' || status === 'absent') absent++
+      else pending++
+    })
+
+    return {
+      name: c,
+      รวม: classStudents.length,
+      ผ่าน: pass,
+      ไม่ผ่าน: fail,
+      ขาดรอตรวจ: absent + pending
+    }
+  })
+
+  // --- ข้อมูลตาราง (แยกรายห้อง) ---
+  const classrooms: Record<string, { total: number, pass: number, fail: number, absent: number }> = {}
   
-  const atRiskStudents = filteredStats.filter(s => s.correction_attempts >= 3 && s.current_status !== 'pass')
-  const totalFails = filteredStats.reduce((sum, s) => sum + s.failed_first_round, 0)
-  const totalCorrections = filteredStats.reduce((sum, s) => sum + s.correction_attempts, 0)
-  const totalPassedCorrections = filteredStats.filter(s => s.current_status === 'pass' && s.correction_attempts > 0).length
-
-  // ฟังก์ชันดาวน์โหลด Excel ทั่วไป (ตามห้องที่เลือก)
-  const handleExportStandardExcel = () => {
-    if (filteredStats.length === 0) {
-      Swal.fire('ไม่มีข้อมูล', 'ไม่พบข้อมูลสถิติในเงื่อนไขที่เลือก', 'info')
-      return
+  students.forEach(s => {
+    const roomKey = `${s.class_name}/${s.room}`
+    if (!classrooms[roomKey]) {
+      classrooms[roomKey] = { total: 0, pass: 0, fail: 0, absent: 0 }
     }
+    classrooms[roomKey].total++
+    
+    const status = inspections[s.id]
+    if (status === 'pass') classrooms[roomKey].pass++
+    else if (status === 'fail') classrooms[roomKey].fail++
+    else classrooms[roomKey].absent++ // ขาด + ยังไม่ตรวจรวมกันในตาราง
+  })
 
-    const excelRows = filteredStats.map((s, idx) => ({
-      'ลำดับ': idx + 1,
-      'ชั้น/ห้อง': `${s.class_name}/${s.room}`,
-      'เลขที่': s.number,
-      'รหัสนักเรียน': s.student_id,
-      'ชื่อ-สกุล': s.full_name,
-      'ติดไม่ผ่าน (รอบแรก)': s.failed_first_round,
-      'จำนวนครั้งที่ตรวจแก้ไข': s.correction_attempts,
-      'สถานะการแก้ไขในภาคเรียน': s.current_status === 'pass' ? 'ผ่านแล้ว' : s.current_status === 'fail' ? 'ยังไม่ผ่าน' : 'รอตรวจแก้'
+  // เรียงลำดับห้องเรียน (ม.1/1, ม.1/2 ... ม.6/10)
+  const sortedRooms = Object.keys(classrooms).sort((a, b) => {
+    const [classA, roomA] = a.replace('ม.', '').split('/')
+    const [classB, roomB] = b.replace('ม.', '').split('/')
+    if (parseInt(classA) !== parseInt(classB)) return parseInt(classA) - parseInt(classB)
+    return parseInt(roomA) - parseInt(roomB)
+  })
+
+  const exportToExcel = () => {
+    const rows = sortedRooms.map(roomKey => ({
+      'ห้องเรียน': roomKey,
+      'นร.ทั้งหมด': classrooms[roomKey].total,
+      'ผ่าน': classrooms[roomKey].pass,
+      'ไม่ผ่าน': classrooms[roomKey].fail,
+      'ขาดตรวจ': classrooms[roomKey].absent
     }))
 
-    const worksheet = XLSX.utils.json_to_sheet(excelRows)
+    const worksheet = XLSX.utils.json_to_sheet(rows)
     const workbook = XLSX.utils.book_new()
-    XLSX.utils.book_append_sheet(workbook, worksheet, 'สถิติการตรวจระเบียบ')
-    
-    const roomText = selectedClass === 'all' ? 'ทั้งหมด' : `${selectedClass}${selectedRoom !== 'all' ? `_ห้อง${selectedRoom}` : ''}`
-    XLSX.writeFile(workbook, `สถิติตรวจระเบียบ_${roomText}_เดือน${inspectionMonth}.xlsx`)
+    XLSX.utils.book_append_sheet(workbook, worksheet, 'สถิติแยกห้อง')
+    XLSX.writeFile(workbook, `สถิติภาพรวม_${filterMonth}.xlsx`)
   }
 
-  // ฟังก์ชันดาวน์โหลด Excel เฉพาะกลุ่มเสี่ยง
-  const handleExportAtRiskExcel = () => {
-    if (atRiskStudents.length === 0) {
-      Swal.fire('ไม่มีข้อมูลกลุ่มเสี่ยง', 'ไม่มีนักเรียนที่ติดแก้ไขเกิน 3 ครั้งในรอบเดือนนี้', 'success')
-      return
-    }
-
-    const excelRows = atRiskStudents.map((s, idx) => ({
-      'ลำดับ': idx + 1,
-      'ชั้น/ห้อง': `${s.class_name}/${s.room}`,
-      'เลขที่': s.number,
-      'ชื่อ-สกุล': s.full_name,
-      'จำนวนครั้งที่ติดแก้ไข': s.correction_attempts,
-      'สถานะปัจจุบัน': 'ยังไม่ผ่าน',
-      'หมายเหตุ': 'กลุ่มเสี่ยง (เกิน 3 ครั้ง)'
-    }))
-
-    const worksheet = XLSX.utils.json_to_sheet(excelRows)
-    const workbook = XLSX.utils.book_new()
-    XLSX.utils.book_append_sheet(workbook, worksheet, 'รายชื่อกลุ่มเสี่ยง')
-    
-    const roomText = selectedClass === 'all' ? 'ทั้งหมด' : `${selectedClass}${selectedRoom !== 'all' ? `_ห้อง${selectedRoom}` : ''}`
-    XLSX.writeFile(workbook, `รายชื่อกลุ่มเสี่ยง_${roomText}_เดือน${inspectionMonth}.xlsx`)
+  if (loading) {
+    return <div className="p-8 text-center text-gray-500 font-bold">กำลังโหลดข้อมูลสถิติ...</div>
   }
 
   return (
-    <div className="min-h-screen bg-gray-50/50 pb-20 font-sans">
-      <div className="max-w-7xl mx-auto p-4 space-y-4">
+    <div className="min-h-screen bg-[#38bdf8]/20 p-4 md:p-8 font-sans">
+      <div className="max-w-7xl mx-auto space-y-6">
         
-        {/* Header & Main Filters */}
-        <div className="bg-white p-4 rounded-2xl shadow-sm border border-gray-100 flex flex-col md:flex-row gap-4 justify-between items-start md:items-center">
+        {/* Header Section */}
+        <div className="bg-white rounded-2xl p-4 shadow-sm border border-gray-100 flex flex-wrap items-center justify-between gap-4">
+          <div className="flex items-center gap-2">
+            <PieChartIcon className="w-6 h-6 text-blue-600" />
+            <h1 className="text-xl font-extrabold text-gray-800">แดชบอร์ดสถิติภาพรวม</h1>
+          </div>
           <div className="flex items-center gap-3">
-            <button onClick={() => router.back()} className="p-2 hover:bg-gray-100 rounded-xl transition">
-              <ArrowLeft className="w-5 h-5 text-gray-600" />
-            </button>
-            <div>
-              <h1 className="text-xl font-extrabold text-gray-800 flex items-center gap-2">
-                <BarChart3 className="w-6 h-6 text-blue-600" />
-                รายงานสถิติการตรวจระเบียบสะสม
-              </h1>
-              <p className="text-xs text-gray-500">สรุปผลการตรวจแก้ไขรายเดือนและประจำภาคเรียน</p>
-            </div>
-          </div>
-
-          {/* เพิ่ม div นี้กลับมาเพื่อครอบตัวกรองด้านขวาให้อยู่กลุ่มเดียวกัน */}
-          <div className="flex flex-wrap items-center gap-2 w-full md:w-auto">
-            <div 
-              className="flex items-center gap-1.5 bg-gray-50 border border-gray-200 px-3 py-1.5 rounded-xl text-xs font-bold text-gray-700 w-full sm:w-auto cursor-pointer hover:bg-gray-100 transition-colors"
-              onClick={(e) => {
-                const input = e.currentTarget.querySelector('input');
-                if (input && 'showPicker' in input) {
-                  input.showPicker();
-                }
-              }}
+            <input 
+              type="month" 
+              value={filterMonth}
+              onChange={(e) => setFilterMonth(e.target.value)}
+              className="border border-gray-200 rounded-lg px-3 py-1.5 text-sm font-semibold text-gray-700 outline-none focus:ring-2 focus:ring-blue-500"
+            />
+            <select 
+              value={filterType}
+              onChange={(e) => setFilterType(e.target.value)}
+              className="border border-gray-200 bg-gray-50 rounded-lg px-3 py-1.5 text-sm font-semibold text-gray-700 outline-none focus:ring-2 focus:ring-blue-500"
             >
-              <Calendar className="w-3.5 h-3.5 text-blue-600 shrink-0" />
-              
-              <span className="text-blue-800 shrink-0 select-none">
-                {new Date(inspectionMonth + '-01').toLocaleDateString('th-TH', { 
-                  month: 'long', 
-                  year: 'numeric' 
-                })}
-              </span>
-
-              <input
-                type="month"
-                value={inspectionMonth}
-                onChange={(e) => setInspectionMonth(e.target.value)}
-                className="w-0 h-0 opacity-0 pointer-events-none absolute"
-              />
-            </div>
-            
-            <select value={academicYear} onChange={(e) => setAcademicYear(e.target.value)} className="bg-white border border-gray-200 px-3 py-2 rounded-xl text-xs font-bold text-gray-700 outline-none">
-              <option value="2569">ปีการศึกษา 2569</option>
-              <option value="2568">ปีการศึกษา 2568</option>
-            </select>
-
-            <select value={semester} onChange={(e) => setSemester(e.target.value)} className="bg-white border border-gray-200 px-3 py-2 rounded-xl text-xs font-bold text-gray-700 outline-none">
-              <option value="1">ภาคเรียนที่ 1</option>
-              <option value="2">ภาคเรียนที่ 2</option>
+              <option value="all">📊 สถิติตรวจรวมทุกรายการ</option>
             </select>
           </div>
         </div>
 
-        {/* Room Filters & Export Buttons */}
-        <div className="bg-white p-4 rounded-2xl shadow-sm border border-gray-100 flex flex-col lg:flex-row justify-between gap-4">
-          <div className="flex flex-wrap items-center gap-2">
-            <div className="flex items-center gap-2 text-sm font-bold text-gray-700 mr-2">
-              <Filter className="w-4 h-4 text-gray-500" />
-              กรองข้อมูล:
-            </div>
-            <select value={selectedClass} onChange={(e) => { setSelectedClass(e.target.value); if(e.target.value === 'all') setSelectedRoom('all'); }} className="bg-gray-50 border border-gray-200 px-3 py-2 rounded-xl text-sm font-bold text-gray-700 outline-none min-w-[120px]">
-              <option value="all">ทุกระดับชั้น</option>
-              {classes.map(c => <option key={c} value={c}>{c}</option>)}
-            </select>
-
-            <select value={selectedRoom} onChange={(e) => setSelectedRoom(e.target.value)} disabled={selectedClass === 'all'} className="bg-gray-50 border border-gray-200 px-3 py-2 rounded-xl text-sm font-bold text-gray-700 outline-none min-w-[100px] disabled:opacity-50">
-              <option value="all">ทุกห้อง</option>
-              {rooms.map(r => <option key={r} value={r.toString()}>ห้อง {r}</option>)}
-            </select>
+        {/* Top Summary Cards */}
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+          <div className="bg-white rounded-2xl p-4 text-center shadow-sm border border-gray-100">
+            <div className="text-sm font-bold text-gray-500 mb-1">ทั้งหมด</div>
+            <div className="text-2xl font-black text-gray-800">{totalStudents}</div>
           </div>
-
-          <div className="flex flex-wrap items-center gap-2">
-            <button onClick={handleExportStandardExcel} disabled={loading} className="flex-1 lg:flex-none flex items-center justify-center gap-2 bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 rounded-xl text-xs font-bold transition shadow-sm disabled:opacity-50">
-              <Download className="w-4 h-4" />
-              <span>ส่งออกสถิติ (Excel)</span>
-            </button>
-            <button onClick={handleExportAtRiskExcel} disabled={loading} className="flex-1 lg:flex-none flex items-center justify-center gap-2 bg-rose-600 hover:bg-rose-700 text-white px-4 py-2 rounded-xl text-xs font-bold transition shadow-sm disabled:opacity-50">
-              <AlertTriangle className="w-4 h-4" />
-              <span>ส่งออกเฉพาะกลุ่มเสี่ยง</span>
-            </button>
+          <div className="bg-[#16a34a] rounded-2xl p-4 text-center shadow-sm">
+            <div className="text-sm font-bold text-white/90 mb-1">ผ่าน</div>
+            <div className="text-2xl font-black text-white">{totalPass}</div>
+          </div>
+          <div className="bg-[#dc2626] rounded-2xl p-4 text-center shadow-sm">
+            <div className="text-sm font-bold text-white/90 mb-1">ไม่ผ่าน</div>
+            <div className="text-2xl font-black text-white">{totalFail}</div>
+          </div>
+          <div className="bg-[#eab308] rounded-2xl p-4 text-center shadow-sm">
+            <div className="text-sm font-bold text-white/90 mb-1">ขาดตรวจ</div>
+            <div className="text-2xl font-black text-white">{totalAbsent}</div>
           </div>
         </div>
 
-        {/* At Risk Banner */}
-        <div className={`p-4 rounded-2xl border ${atRiskStudents.length > 0 ? 'bg-rose-50 border-rose-200' : 'bg-rose-50/50 border-rose-100'} flex flex-col gap-3`}>
-          <div className="flex items-center justify-between">
-            <h2 className="flex items-center gap-2 text-rose-700 font-bold text-sm md:text-base">
-              <AlertTriangle className="w-5 h-5" />
-              รายชื่อนักเรียนกลุ่มเสี่ยงประจำเดือน {inspectionMonth} (แก้ไขไม่ผ่าน 3 ครั้งขึ้นไป)
-            </h2>
-            <span className="bg-rose-600 text-white text-xs font-bold px-3 py-1 rounded-full">{atRiskStudents.length} คน</span>
+        {/* Charts Section */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          {/* Donut Chart */}
+          <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 flex flex-col items-center">
+            <h3 className="text-sm font-bold text-gray-700 mb-4">สัดส่วนภาพรวม</h3>
+            <div className="h-64 w-full relative">
+              <ResponsiveContainer width="100%" height="100%">
+                <PieChart>
+                  <Pie
+                    data={donutData}
+                    cx="50%"
+                    cy="50%"
+                    innerRadius={70}
+                    outerRadius={100}
+                    paddingAngle={2}
+                    dataKey="value"
+                  >
+                    {donutData.map((entry, index) => (
+                      <Cell key={`cell-${index}`} fill={entry.color} />
+                    ))}
+                  </Pie>
+                  <RechartsTooltip />
+                </PieChart>
+              </ResponsiveContainer>
+              <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
+                <span className="text-xl font-black text-gray-800">{totalStudents} คน</span>
+                <span className="text-xs font-bold text-gray-500">(100.0%)</span>
+              </div>
+            </div>
+            <div className="flex gap-4 mt-4 text-xs font-bold">
+              <div className="flex items-center gap-1.5"><div className="w-4 h-2 bg-[#16a34a] rounded"></div>ผ่าน</div>
+              <div className="flex items-center gap-1.5"><div className="w-4 h-2 bg-[#dc2626] rounded"></div>ไม่ผ่าน</div>
+              <div className="flex items-center gap-1.5"><div className="w-4 h-2 bg-[#eab308] rounded"></div>ขาดตรวจ</div>
+              <div className="flex items-center gap-1.5"><div className="w-4 h-2 bg-[#e5e7eb] rounded"></div>ยังไม่ตรวจ</div>
+            </div>
+          </div>
+
+          {/* Bar Chart */}
+          <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 flex flex-col items-center">
+            <h3 className="text-sm font-bold text-gray-700 mb-4">เปรียบเทียบแต่ละระดับชั้น</h3>
+            <div className="h-64 w-full">
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={barChartData} margin={{ top: 20, right: 0, left: -20, bottom: 0 }}>
+                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f3f4f6" />
+                  <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: '#6b7280', fontWeight: 'bold' }} />
+                  <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: '#6b7280' }} />
+                  <RechartsTooltip cursor={{ fill: '#f9fafb' }} />
+                  <Bar dataKey="รวม" fill="#facc15" radius={[4, 4, 0, 0]} barSize={40}>
+                    {/* Label On Top of Bar */}
+                    {/* {barChartData.map((entry, index) => (
+                      <LabelList dataKey="รวม" position="top" style={{ fontSize: '10px', fontWeight: 'bold', fill: '#3b82f6' }} />
+                    ))} */}
+                  </Bar>
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+            <div className="flex gap-4 mt-4 text-xs font-bold">
+              <div className="flex items-center gap-1.5"><div className="w-4 h-2 bg-[#16a34a] rounded"></div>ผ่าน</div>
+              <div className="flex items-center gap-1.5"><div className="w-4 h-2 bg-[#dc2626] rounded"></div>ไม่ผ่าน</div>
+              <div className="flex items-center gap-1.5"><div className="w-4 h-2 bg-[#facc15] rounded"></div>ขาด/รอตรวจ</div>
+            </div>
+          </div>
+        </div>
+
+        {/* Table Section */}
+        <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
+          <div className="p-4 border-b border-gray-100 flex flex-wrap items-center justify-between gap-4">
+            <div className="flex items-center gap-2">
+              <TableIcon className="w-5 h-5 text-blue-600" />
+              <h3 className="text-sm font-extrabold text-gray-800">สรุปผลแยกตามห้องเรียน</h3>
+            </div>
+            <button 
+              onClick={exportToExcel}
+              className="flex items-center gap-2 bg-[#2563eb] hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-xs font-bold transition shadow-sm"
+            >
+              <FileSpreadsheet className="w-4 h-4" /> สร้าง Google Sheet / Excel
+            </button>
           </div>
           
-          {atRiskStudents.length === 0 ? (
-            <p className="text-sm text-gray-600 flex items-center gap-2">✨ ไม่มีนักเรียนที่ติดแก้ไขไม่ผ่านเกิน 3 ครั้งในรอบเดือนนี้</p>
-          ) : (
-            <div className="flex flex-wrap gap-2">
-              {atRiskStudents.map(student => (
-                <span key={student.id} className="bg-white border border-rose-200 text-rose-800 text-xs font-semibold px-3 py-1.5 rounded-lg shadow-sm">
-                  {student.class_name}/{student.room} ลท.{student.number} {student.full_name} ({student.correction_attempts} ครั้ง)
-                </span>
-              ))}
-            </div>
-          )}
-        </div>
-
-        {/* Summary Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          <div className="bg-white p-5 rounded-2xl shadow-sm border border-gray-100 flex items-center gap-4">
-            <div className="bg-rose-100 p-3 rounded-xl"><AlertTriangle className="w-6 h-6 text-rose-600" /></div>
-            <div>
-              <p className="text-xs text-gray-500 font-semibold mb-1">ติดไม่ผ่านรวมในภาคเรียน</p>
-              <p className="text-2xl font-extrabold text-gray-800">{totalFails} <span className="text-sm font-normal text-gray-500">ครั้ง</span></p>
-            </div>
-          </div>
-          <div className="bg-white p-5 rounded-2xl shadow-sm border border-gray-100 flex items-center gap-4">
-            <div className="bg-amber-100 p-3 rounded-xl"><RefreshCcw className="w-6 h-6 text-amber-600" /></div>
-            <div>
-              <p className="text-xs text-gray-500 font-semibold mb-1">ตรวจแก้ไขทั้งหมด</p>
-              <p className="text-2xl font-extrabold text-gray-800">{totalCorrections} <span className="text-sm font-normal text-gray-500">ครั้ง</span></p>
-            </div>
-          </div>
-          <div className="bg-white p-5 rounded-2xl shadow-sm border border-gray-100 flex items-center gap-4">
-            <div className="bg-emerald-100 p-3 rounded-xl"><CheckCircle2 className="w-6 h-6 text-emerald-600" /></div>
-            <div>
-              <p className="text-xs text-gray-500 font-semibold mb-1">แก้ไขผ่านสำเร็จแล้ว</p>
-              <p className="text-2xl font-extrabold text-gray-800">{totalPassedCorrections} <span className="text-sm font-normal text-gray-500">ครั้ง</span></p>
-            </div>
-          </div>
-        </div>
-
-        {/* Data Table */}
-        <div className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden">
-          <div className="px-5 py-4 border-b border-gray-100 flex items-center gap-2">
-            <Users className="w-5 h-5 text-blue-600" />
-            <h3 className="font-bold text-gray-800 text-sm">สถิติตรวจระเบียบรายบุคคล (ปีการศึกษา {academicYear} / ภาคเรียนที่ {semester})</h3>
-          </div>
-          
-          <div className="overflow-x-auto">
-            <table className="w-full text-left border-collapse">
-              <thead>
-                <tr className="bg-gray-50 text-gray-600 font-bold text-xs border-b border-gray-200">
-                  <th className="py-3 px-4 text-center">ชั้น/ห้อง</th>
-                  <th className="py-3 px-4 text-center">เลขที่</th>
-                  <th className="py-3 px-4">ชื่อ-สกุล</th>
-                  <th className="py-3 px-4 text-center">ติดไม่ผ่าน (รอบแรก)</th>
-                  <th className="py-3 px-4 text-center">จำนวนครั้งที่ตรวจแก้ไข</th>
-                  <th className="py-3 px-4 text-center">สถานะการแก้ไขในภาคเรียน</th>
+          <div className="overflow-x-auto max-h-[500px]">
+            <table className="w-full text-center border-collapse">
+              <thead className="bg-gray-50 sticky top-0 z-10">
+                <tr className="text-xs font-extrabold text-gray-700 border-b border-gray-200">
+                  <th className="py-3 px-4">ห้องเรียน</th>
+                  <th className="py-3 px-4">นร.ทั้งหมด</th>
+                  <th className="py-3 px-4 text-[#16a34a]">ผ่าน</th>
+                  <th className="py-3 px-4 text-[#dc2626]">ไม่ผ่าน</th>
+                  <th className="py-3 px-4 text-[#d97706]">ขาดตรวจ</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-gray-100 text-sm">
-                {loading ? (
-                  <tr><td colSpan={6} className="py-12 text-center text-gray-400 text-sm">กำลังโหลดข้อมูล...</td></tr>
-                ) : filteredStats.length === 0 ? (
-                  <tr><td colSpan={6} className="py-12 text-center text-gray-400 text-sm">ไม่มีข้อมูลสถิติในเงื่อนไขที่เลือก</td></tr>
-                ) : (
-                  filteredStats.map((student) => (
-                    <tr key={student.id} className="hover:bg-blue-50/30 transition">
-                      <td className="py-3 px-4 text-center font-semibold text-gray-700">{student.class_name}/{student.room}</td>
-                      <td className="py-3 px-4 text-center font-semibold text-gray-700">{student.number}</td>
-                      <td className="py-3 px-4 font-bold text-gray-800">{student.full_name}</td>
-                      <td className="py-3 px-4 text-center text-rose-600 font-bold">{student.failed_first_round}</td>
-                      <td className="py-3 px-4 text-center text-amber-600 font-bold">{student.correction_attempts}</td>
-                      <td className="py-3 px-4 text-center">
-                        {student.current_status === 'pass' && <span className="bg-emerald-100 text-emerald-700 px-3 py-1 rounded-full text-xs font-bold">ผ่านแล้ว</span>}
-                        {student.current_status === 'fail' && <span className="bg-rose-100 text-rose-700 px-3 py-1 rounded-full text-xs font-bold">ยังไม่ผ่าน</span>}
-                        {student.current_status === 'pending' && <span className="bg-gray-100 text-gray-600 px-3 py-1 rounded-full text-xs font-bold">รอตรวจแก้</span>}
-                      </td>
-                    </tr>
-                  ))
-                )}
+              <tbody className="divide-y divide-gray-100 text-sm font-bold text-gray-600">
+                {sortedRooms.map((roomKey) => (
+                  <tr key={roomKey} className="hover:bg-blue-50/50 transition">
+                    <td className="py-3 px-4 text-blue-600">{roomKey}</td>
+                    <td className="py-3 px-4">{classrooms[roomKey].total}</td>
+                    <td className="py-3 px-4 text-[#16a34a]">{classrooms[roomKey].pass}</td>
+                    <td className="py-3 px-4 text-[#dc2626]">{classrooms[roomKey].fail}</td>
+                    <td className="py-3 px-4 text-[#eab308]">{classrooms[roomKey].absent}</td>
+                  </tr>
+                ))}
               </tbody>
             </table>
+            {sortedRooms.length === 0 && (
+              <div className="p-8 text-gray-400 font-medium">ไม่พบข้อมูลนักเรียน</div>
+            )}
           </div>
         </div>
 
