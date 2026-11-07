@@ -483,10 +483,19 @@ export default function CompleteInspectionPage() {
                 </span>
               </div>
 
-  <div className="relative flex items-center gap-1.5 bg-gray-50 border border-gray-200 px-3 py-1.5 rounded-xl text-xs font-bold text-gray-700 w-full sm:w-auto overflow-hidden">
+  <div 
+  className="flex items-center gap-1.5 bg-gray-50 border border-gray-200 px-3 py-1.5 rounded-xl text-xs font-bold text-gray-700 w-full sm:w-auto cursor-pointer hover:bg-gray-100 transition-colors"
+  onClick={(e) => {
+    // ดึงตัว input ที่ซ่อนอยู่มาบังคับเปิดปฏิทิน
+    const input = e.currentTarget.querySelector('input');
+    if (input && 'showPicker' in input) {
+      input.showPicker();
+    }
+  }}
+>
   <Calendar className="w-3.5 h-3.5 text-blue-600 shrink-0" />
   
-  <span className="text-blue-800 shrink-0 pointer-events-none">
+  <span className="text-blue-800 shrink-0 select-none">
     {new Date(inspectionMonth + '-01').toLocaleDateString('th-TH', { 
       month: 'long', 
       year: 'numeric' 
@@ -497,13 +506,7 @@ export default function CompleteInspectionPage() {
     type="month"
     value={inspectionMonth}
     onChange={(e) => setInspectionMonth(e.target.value)}
-    onClick={(e) => {
-      // บังคับเปิดหน้าต่างเลือกเดือนเมื่อคลิก
-      if ('showPicker' in HTMLInputElement.prototype) {
-        e.currentTarget.showPicker();
-      }
-    }}
-    className="absolute inset-0 opacity-0 cursor-pointer w-full h-full"
+    className="w-0 h-0 opacity-0 pointer-events-none absolute"
   />
 </div>
 
